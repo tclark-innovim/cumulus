@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 
 set +e
 
 specName=$(echo "$2" | rev | cut -d'/' -f 1 | cut -d'.' -f 2 | rev)
 outputPath="${1}/${specName}-running.txt"
-
+# sleep $((1 + RANDOM % 60))
 TIMESTAMP=$(date "+%Y-%m-%dT%H:%M:%S")
 echo "$TIMESTAMP ../node_modules/.bin/jasmine $2 STARTED"
 

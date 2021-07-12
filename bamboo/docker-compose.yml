@@ -4,6 +4,9 @@ services:
     image: postgres:10.7-alpine
     environment:
       - POSTGRES_PASSWORD=password
+      - MAX_CONNECTIONS=2
+      - POSTGRES_MAX_CONNECTIONS=2
+    command: "-c max_connections=2 -c max_wal_senders=1 -c superuser_reserved_connections=1"
     network_mode: "service:build_env"
   ftp:
     image: maven.earthdata.nasa.gov/cumuluss/vsftpd:3
