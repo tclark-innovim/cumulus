@@ -1,4 +1,6 @@
 const test = require('ava');
+const sinon = require('sinon');
+const { KnexTimeoutError } = require('knex');
 const cryptoRandomString = require('crypto-random-string');
 const { RecordDoesNotExist } = require('@cumulus/errors');
 
@@ -93,6 +95,7 @@ test.before(async (t) => {
   );
 
   t.context.executionPgModel = new ExecutionPgModel();
+  process.env.dbRetryFailedConnection = 'true';
 });
 
 test.after.always(async (t) => {
@@ -100,6 +103,28 @@ test.after.always(async (t) => {
     ...t.context,
     testDbName,
   });
+});
+
+test('executionArnsFromGranuleIdsAndWorkflowNames retries on DB failure', async (t) => {
+  const selectStub = sinon.stub();
+  console.log('foobar');
+  selectStub.onCall(0).throws(new KnexTimeoutError());
+  selectStub.onCall(1).returns({
+    from: () => ({
+      join: () => ({
+        join: () => ({
+          whereIn: () => ({
+            whereIn: () => ({
+              orderBy: () => [{ id: 1 }],
+            }),
+          }),
+        }),
+      }),
+    }),
+  });
+  const knex = ({ select: () => selectStub() });
+  const actual = await executionArnsFromGranuleIdsAndWorkflowNames(knex, [], []);
+  t.deepEqual([{ id: 1 }], actual);
 });
 
 test('executionArnsFromGranuleIdsAndWorkflowNames() returns arn by workflow and granuleId for a linked granule execution.', async (t) => {

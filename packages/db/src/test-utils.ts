@@ -28,6 +28,7 @@ export const generateLocalTestDb = async (
   envParams: object
 ) => {
   const knexAdmin = await getKnexClient({ env: localStackConnectionEnv });
+  await createTestDatabase(knexAdmin, testDbName, localStackConnectionEnv.PG_USER);
   const knex = await getKnexClient({
     env: {
       ...envParams,
@@ -36,7 +37,6 @@ export const generateLocalTestDb = async (
       migrationDir,
     },
   });
-  await createTestDatabase(knexAdmin, testDbName, localStackConnectionEnv.PG_USER);
   await knex.migrate.latest();
   return ({ knex, knexAdmin });
 };

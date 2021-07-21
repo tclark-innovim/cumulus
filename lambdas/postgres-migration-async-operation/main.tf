@@ -14,14 +14,19 @@ resource "aws_lambda_function" "postgres-migration-async-operation" {
 
   environment {
     variables = {
+      AsyncOperationsTable         = var.dynamo_tables.async_operations.name
+      AsyncOperationTaskDefinition = var.async_operation_task_definition_arn
       databaseCredentialSecretArn  = var.rds_user_access_secret_arn
       dbHeartBeat                  = var.rds_connection_heartbeat
-      system_bucket                = var.system_bucket
-      AsyncOperationsTable         = var.dynamo_tables.async_operations.name
-      stackName                    = var.prefix
-      MigrationLambda              = var.data_migration2_function_arn
+      dbRetryConfigMaxTimeout      = lookup(var.db_retry_configuration, "max_timeout", "")
+      dbRetryConfigMinTimeout      = lookup(var.db_retry_configuration, "min_timeout", "")
+      dbRetryConfigFactor          = lookup(var.db_retry_configuration, "factor", "")
+      dbRetryConfigRetries         = lookup(var.db_retry_configuration, "retries", "")
+      dbRetryFailedConnection      = var.db_retry_failed_connection
       EcsCluster                   = var.ecs_cluster_name
-      AsyncOperationTaskDefinition = var.async_operation_task_definition_arn
+      MigrationLambda              = var.data_migration2_function_arn
+      stackName                    = var.prefix
+      system_bucket                = var.system_bucket
     }
   }
 

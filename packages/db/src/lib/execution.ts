@@ -1,10 +1,12 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
+
 import { RecordDoesNotExist } from '@cumulus/errors';
+import Logger from '@cumulus/logger';
+import { getKnexClient } from '../connection';
+
 import { tableNames } from '../tables';
-
-const Logger = require('@cumulus/logger');
-
-const { getKnexClient } = require('../connection');
+import { retryConfiguration } from '../retry';
 
 export interface arnRecord {
   arn: string;
@@ -26,7 +28,7 @@ export const executionArnsFromGranuleIdsAndWorkflowNames = (
   granuleIds: string[],
   workflowNames: string[]
 ): Promise<arnRecord[]> =>
-  knex
+  pRetry(() => knex
     .select(`${tableNames.executions}.arn`)
     .from(tableNames.executions)
     .join(
@@ -41,15 +43,16 @@ export const executionArnsFromGranuleIdsAndWorkflowNames = (
     )
     .whereIn(`${tableNames.granules}.granule_id`, granuleIds)
     .whereIn(`${tableNames.executions}.workflow_name`, workflowNames)
-    .orderBy(`${tableNames.executions}.timestamp`, 'desc');
+    .orderBy(`${tableNames.executions}.timestamp`, 'desc'), retryConfiguration());
 
 /**
  * convenience function to return a single executionArn string for a intput
  *  granuleId and workflowName.
  *
- * @param {string} granuleId -  granuleIds
+ * @param {string} granuleId    -  granuleIds
  * @param {string} workflowName - workflow name
- * @returns {Promise<string>} - most recent exectutionArn for input parameters.
+ * @param {string} testKnex     - optional test override for Knex object
+ * @returns {Promise<string>}   - most recent exectutionArn  input parameters.
  * @throws {RecordNotFound}
  */
 export const newestExecutionArnFromGranuleIdWorkflowName = async (

@@ -1,4 +1,5 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { BasePgModel } from './base';
 import { tableNames } from '../tables';
@@ -16,11 +17,12 @@ class ProviderPgModel extends BasePgModel<PostgresProvider, PostgresProviderReco
     knexOrTransaction: Knex | Knex.Transaction,
     provider: PostgresProvider
   ) {
-    return knexOrTransaction(this.tableName)
+    return pRetry(() => knexOrTransaction(this.tableName)
       .insert(provider)
       .onConflict('name')
       .merge()
-      .returning('cumulus_id');
+      .returning('cumulus_id'),
+    this.retryConfiguration());
   }
 }
 

@@ -1,4 +1,6 @@
 const test = require('ava');
+const sinon = require('sinon');
+const { KnexTimeoutError } = require('knex');
 const cryptoRandomString = require('crypto-random-string');
 
 const { RecordDoesNotExist } = require('@cumulus/errors');
@@ -6,10 +8,9 @@ const { RecordDoesNotExist } = require('@cumulus/errors');
 const { localStackConnectionEnv } = require('../../dist/config');
 const { getKnexClient } = require('../../dist/connection');
 const { BasePgModel } = require('../../dist/models/base');
-
 test.before(async (t) => {
   t.context.knex = await getKnexClient({
-    env: localStackConnectionEnv,
+    env: { ...localStackConnectionEnv, dbHeartBeat: 'true' },
   });
   t.context.tableName = cryptoRandomString({ length: 10 });
   await t.context.knex.schema.createTable(t.context.tableName, (table) => {
@@ -17,6 +18,7 @@ test.before(async (t) => {
     table.text('info');
   });
   t.context.basePgModel = new BasePgModel({ tableName: t.context.tableName });
+  process.env.dbRetryFailedConnection = 'true';
 });
 
 test.after.always(async (t) => {
@@ -57,6 +59,18 @@ test('BasePgModel.create() works with knex transaction', async (t) => {
   );
 });
 
+test('BasePgModel.create() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const insertStub = sinon.stub();
+  const expected = ({ id: 1 });
+  console.log('foobar');
+  insertStub.onCall(0).throws(new KnexTimeoutError());
+  insertStub.onCall(1).returns({ returning: () => expected });
+  const knex = () => ({ insert: () => insertStub() });
+  const actual = await basePgModel.create(knex, {});
+  t.deepEqual(expected, actual);
+});
+
 test('BasePgModel.get() returns correct record', async (t) => {
   const { knex, basePgModel, tableName } = t.context;
   const info = cryptoRandomString({ length: 5 });
@@ -88,6 +102,18 @@ test('BasePgModel.get() throws an error when a record is not found', async (t) =
     knex.transaction((trx) => basePgModel.get(trx, { info })),
     { instanceOf: RecordDoesNotExist }
   );
+});
+
+test('BasePgModel.get() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const whereStub = sinon.stub();
+  const expected = { id: 1 };
+  console.log('foobar');
+  whereStub.onCall(0).throws(new KnexTimeoutError());
+  whereStub.onCall(1).returns({ first: () => expected });
+  const knex = () => ({ where: () => whereStub() });
+  const actual = await basePgModel.get(knex, {});
+  t.deepEqual({ id: 1 }, actual);
 });
 
 test('BasePgModel.getRecordCumulusId() returns correct value', async (t) => {
@@ -125,6 +151,18 @@ test('BasePgModel.getRecordCumulusId() throws RecordDoesNotExist error for missi
   );
 });
 
+test('BasePgModel.getRecordCumulusId() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const selectStub = sinon.stub();
+  const expectedRecord = { cumulus_id: 1 };
+  console.log('foobar');
+  selectStub.onCall(0).throws(new KnexTimeoutError());
+  selectStub.onCall(1).returns({ where: () => ({ first: () => expectedRecord }) });
+  const knex = () => ({ select: () => selectStub() });
+  const actual = await basePgModel.getRecordCumulusId(knex, {});
+  t.deepEqual(expectedRecord.cumulus_id, actual);
+});
+
 test('BasePgModel.getRecordsCumulusIds() returns correct values', async (t) => {
   const { knex, basePgModel, tableName } = t.context;
   const info1 = cryptoRandomString({ length: 5 });
@@ -153,6 +191,18 @@ test('BasePgModel.getRecordsCumulusIds() works with knex transaction', async (t)
     ),
     recordsCumulusIds
   );
+});
+
+test('BasePgModel.getRecordsCumulusIds() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const selectStub = sinon.stub();
+  const expectedRecord = { cumulus_id: 1 };
+  console.log('foobar');
+  selectStub.onCall(0).throws(new KnexTimeoutError());
+  selectStub.onCall(1).returns({ whereIn: () => [expectedRecord] });
+  const knex = () => ({ select: () => selectStub() });
+  const actual = await basePgModel.getRecordsCumulusIds(knex, [], []);
+  t.deepEqual([expectedRecord.cumulus_id], actual);
 });
 
 test('BasePgModel.exists() correctly returns true', async (t) => {
@@ -204,6 +254,33 @@ test('BasePgModel.delete() correctly deletes records', async (t) => {
   t.false(await basePgModel.exists(knex, { cumulus_id: recordCumulusId2 }));
 });
 
+test('BasePgModel.delete() works with knex transaction', async (t) => {
+  const { knex, basePgModel, tableName } = t.context;
+  const info = cryptoRandomString({ length: 5 });
+
+  const [recordCumulusId] = await knex(tableName)
+    .insert({ info })
+    .returning('cumulus_id');
+
+  t.is(await knex.transaction(
+    (trx) => basePgModel.delete(trx, { cumulus_id: recordCumulusId })
+  ), 1);
+
+  // validate that the record is not in the table
+  t.false(await basePgModel.exists(knex, { cumulus_id: recordCumulusId }));
+});
+
+test('BasePgModel.delete() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const whereStub = sinon.stub();
+  console.log('foobar');
+  whereStub.onCall(0).throws(new KnexTimeoutError());
+  whereStub.onCall(1).returns({ del: () => 1 });
+  const knex = () => ({ where: () => whereStub() });
+  const actual = await basePgModel.delete(knex, {});
+  t.is(1, actual);
+});
+
 test('BasePgModel.count() returns valid counts', async (t) => {
   const { knex, basePgModel, tableName } = t.context;
 
@@ -228,20 +305,15 @@ test('BasePgModel.count() returns valid counts', async (t) => {
   ), [{ count: '1' }]);
 });
 
-test('BasePgModel.delete() works with knex transaction', async (t) => {
-  const { knex, basePgModel, tableName } = t.context;
-  const info = cryptoRandomString({ length: 5 });
-
-  const [recordCumulusId] = await knex(tableName)
-    .insert({ info })
-    .returning('cumulus_id');
-
-  t.is(await knex.transaction(
-    (trx) => basePgModel.delete(trx, { cumulus_id: recordCumulusId })
-  ), 1);
-
-  // validate that the record is not in the table
-  t.false(await basePgModel.exists(knex, { cumulus_id: recordCumulusId }));
+test('BasePgModel.count() retries on DB failure', async (t) => {
+  const { basePgModel } = t.context;
+  const whereStub = sinon.stub();
+  console.log('foobar');
+  whereStub.onCall(0).throws(new KnexTimeoutError());
+  whereStub.onCall(1).returns({ count: () => 1 });
+  const knex = () => ({ where: () => whereStub() });
+  const actual = await basePgModel.count(knex, {});
+  t.is(1, actual);
 });
 
 test('BasePgModel.search() returns an array of records', async (t) => {
@@ -293,6 +365,17 @@ test('BasePgModel.search() works with knex transaction', async (t) => {
   searchResponse.forEach((r) => {
     t.like(r, recordBody);
   });
+});
+
+test('BasePgModel.search() retries on DB search', async (t) => {
+  const { basePgModel } = t.context;
+  const whereStub = sinon.stub();
+  console.log('foobar');
+  whereStub.onCall(0).throws(new KnexTimeoutError());
+  whereStub.onCall(1).returns([1]);
+  const knex = () => ({ where: () => whereStub() });
+  const actual = await basePgModel.search(knex, {});
+  t.deepEqual([1], actual);
 });
 
 test('BasePgModel.update() updates provided fields on a record', async (t) => {
@@ -369,4 +452,15 @@ test('BasePgModel.update() works with a knex transaction', async (t) => {
       info: newInfo,
     }
   );
+});
+
+test('BasePgModel.update() retries on DB update', async (t) => {
+  const { basePgModel } = t.context;
+  const whereStub = sinon.stub();
+  console.log('foobar');
+  whereStub.onCall(0).throws(new KnexTimeoutError());
+  whereStub.onCall(1).returns({ update: () => 1 });
+  const knex = () => ({ where: () => whereStub() });
+  const actual = await basePgModel.update(knex, {});
+  t.deepEqual(1, actual);
 });

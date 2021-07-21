@@ -1,11 +1,10 @@
 import Knex from 'knex';
+import { deconstructCollectionId } from '@cumulus/message/Collections';
 
 import { PostgresGranule } from '../types/granule';
 import { CollectionPgModel } from '../models/collection';
 import { GranulePgModel } from '../models/granule';
 import { GranulesExecutionsPgModel } from '../models/granules-executions';
-
-const { deconstructCollectionId } = require('@cumulus/message/Collections');
 
 /**
  * Upsert a granule and a record in the granules/executions join table.

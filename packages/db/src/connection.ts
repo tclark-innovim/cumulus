@@ -5,28 +5,23 @@ import pRetry from 'p-retry';
 import Logger from '@cumulus/logger';
 
 import { getKnexConfig } from './config';
+import { retryConfiguration } from './retry';
 
 const log = new Logger({ sender: '@cumulus/db/connection' });
 
 export const queryHeartbeat = async ({
   knex,
+  env = {},
 }: {
-  knex: Knex
+  knex: Knex,
+  env: NodeJS.ProcessEnv,
 }): Promise<void> => await pRetry(
   async () => {
     log.info('Sending Heartbeat Query');
     await knex.raw('SELECT 1');
     log.info('Heartbeat succeeded');
   },
-  {
-    onFailedAttempt: (error) => {
-      if (error.name !== 'KnexTimeoutError') {
-        throw error;
-      }
-      log.warn(`Failed intial attempt at RDS DB connection due to ${error.name}`);
-    },
-    retries: 1,
-  }
+  retryConfiguration({ envOverride: { dbRetryFailedConnection: 'true', ...env } })
 );
 
 /**
@@ -79,7 +74,7 @@ export const getKnexClient = async ({
   const knex = Knex(knexConfig);
   if (env.dbHeartBeat === 'true') {
     try {
-      await queryHeartbeat({ knex });
+      await queryHeartbeat({ knex, env });
     } catch (error) {
       knex.destroy();
       throw error;

@@ -1,4 +1,5 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { BasePgModel } from './base';
 import { tableNames } from '../tables';
@@ -16,10 +17,11 @@ class FilePgModel extends BasePgModel<PostgresFile, PostgresFileRecord> {
     knexOrTrx: Knex | Knex.Transaction,
     file: PostgresFile
   ) {
-    return knexOrTrx(this.tableName)
+    return pRetry(() => knexOrTrx(this.tableName)
       .insert(file)
       .onConflict(['bucket', 'key'])
-      .merge();
+      .merge(),
+    this.retryConfiguration());
   }
 }
 

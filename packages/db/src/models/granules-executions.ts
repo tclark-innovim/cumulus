@@ -1,9 +1,11 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { isRecordDefined } from '../database';
 import { tableNames } from '../tables';
 
 import { PostgresGranuleExecution } from '../types/granule-execution';
+import { retryConfiguration } from '../retry';
 
 export default class GranulesExecutionsPgModel {
   readonly tableName: tableNames;
@@ -18,24 +20,36 @@ export default class GranulesExecutionsPgModel {
     knexTransaction: Knex.Transaction,
     item: PostgresGranuleExecution
   ) {
-    return await knexTransaction(this.tableName).insert(item);
+    return await pRetry(
+      async () => await knexTransaction(this.tableName).insert(item),
+      retryConfiguration()
+    );
   }
 
   async exists(
     knexTransaction: Knex.Transaction,
     item: PostgresGranuleExecution
   ) {
-    return isRecordDefined(await knexTransaction(this.tableName).where(item).first());
+    return isRecordDefined(
+      await pRetry(
+        async () => await knexTransaction(this.tableName).where(item).first(),
+        retryConfiguration()
+      )
+    );
   }
 
   async upsert(
     knexTransaction: Knex.Transaction,
     item: PostgresGranuleExecution
   ) {
-    return await knexTransaction(this.tableName)
-      .insert(item)
-      .onConflict(['granule_cumulus_id', 'execution_cumulus_id'])
-      .merge();
+    return await pRetry(
+      async () =>
+        await knexTransaction(this.tableName)
+          .insert(item)
+          .onConflict(['granule_cumulus_id', 'execution_cumulus_id'])
+          .merge(),
+      retryConfiguration()
+    );
   }
 
   /**
@@ -52,11 +66,17 @@ export default class GranulesExecutionsPgModel {
     granuleCumulusIds: Array<number> | number
   ): Promise<Array<number>> {
     const granuleCumulusIdsArray = [granuleCumulusIds].flat();
-    const granuleExecutions = await knexOrTransaction(this.tableName)
-      .select('execution_cumulus_id')
-      .whereIn('granule_cumulus_id', granuleCumulusIdsArray)
-      .groupBy('execution_cumulus_id');
-    return granuleExecutions.map((granuleExecution) => granuleExecution.execution_cumulus_id);
+    const granuleExecutions = await pRetry(
+      async () =>
+        await knexOrTransaction(this.tableName)
+          .select('execution_cumulus_id')
+          .whereIn('granule_cumulus_id', granuleCumulusIdsArray)
+          .groupBy('execution_cumulus_id'),
+      retryConfiguration()
+    );
+    return granuleExecutions.map(
+      (granuleExecution) => granuleExecution.execution_cumulus_id
+    );
   }
 
   search(

@@ -14,20 +14,25 @@ resource "aws_lambda_function" "postgres_migration_count_tool" {
 
   environment {
     variables = {
-      databaseCredentialSecretArn = var.rds_user_access_secret_arn
-      ExecutionsTable             = var.dynamo_tables.executions.name
-      GranulesTable               = var.dynamo_tables.granules.name
-      PdrsTable                   = var.dynamo_tables.pdrs.name
-      dbHeartBeat                 = var.rds_connection_heartbeat
       AsyncOperationsTable        = var.dynamo_tables.async_operations.name
       CollectionsTable            = var.dynamo_tables.collections.name
+      databaseCredentialSecretArn = var.rds_user_access_secret_arn
+      dbHeartBeat                 = var.rds_connection_heartbeat
+      dbRetryFailedConnection     = var.db_retry_failed_connection
+      dbRetryConfigMaxTimeout     = lookup(var.db_retry_configuration, "max_timeout", "")
+      dbRetryConfigMinTimeout     = lookup(var.db_retry_configuration, "min_timeout", "")
+      dbRetryConfigFactor         = lookup(var.db_retry_configuration, "factor", "")
+      dbRetryConfigRetries        = lookup(var.db_retry_configuration, "retries", "")
+      ExecutionsTable             = var.dynamo_tables.executions.name
       ExecutionsTable             = var.dynamo_tables.executions.name
       GranulesTable               = var.dynamo_tables.granules.name
+      GranulesTable               = var.dynamo_tables.granules.name
       PdrsTable                   = var.dynamo_tables.pdrs.name
+      PdrsTable                   = var.dynamo_tables.pdrs.name
+      prefix                      = var.prefix
       ProvidersTable              = var.dynamo_tables.providers.name
       RulesTable                  = var.dynamo_tables.rules.name
       systemBucket                = var.system_bucket
-      prefix                      = var.prefix
     }
   }
 

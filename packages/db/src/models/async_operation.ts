@@ -1,4 +1,5 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { BasePgModel } from './base';
 import { tableNames } from '../tables';
@@ -17,11 +18,12 @@ class AsyncOperationPgModel extends BasePgModel<PostgresAsyncOperation, Postgres
     knexOrTrx: Knex | Knex.Transaction,
     asyncOperation: PostgresAsyncOperation
   ) {
-    return await knexOrTrx(this.tableName)
+    return await pRetry(async () => await knexOrTrx(this.tableName)
       .insert(asyncOperation)
       .onConflict('id')
       .merge()
-      .returning('cumulus_id');
+      .returning('cumulus_id'),
+    this.retryConfiguration());
   }
 }
 

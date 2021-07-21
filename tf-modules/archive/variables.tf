@@ -332,3 +332,16 @@ variable "es_index_shards" {
   type        = number
   default     = 2
 }
+
+## DB retry variables
+variable "db_retry_failed_connection" {
+  description = "If true, Core modules utilizing the database package will retry connection/query attempts that fail due to timeout/reserved connection errors"
+  type = bool
+  default = false
+}
+
+variable "db_retry_configuration" {
+  description = "Configuration object for `db_retry_failed_connection` that allows tuning of 'retries', 'maxTimeout', 'minTimeout', 'factor' from https://github.com/tim-kos/node-retry#retryoperationoptions on database connection failures"
+  type = map(string)
+  default = {}
+}

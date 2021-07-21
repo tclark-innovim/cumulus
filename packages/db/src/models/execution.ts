@@ -1,4 +1,5 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { BasePgModel } from './base';
 import { tableNames } from '../tables';
@@ -17,7 +18,7 @@ class ExecutionPgModel extends BasePgModel<PostgresExecution, PostgresExecutionR
     execution: PostgresExecution
   ) {
     if (execution.status === 'running') {
-      return await knexOrTrx(this.tableName)
+      return await pRetry(async () => await knexOrTrx(this.tableName)
         .insert(execution)
         .onConflict('arn')
         .merge({
@@ -26,13 +27,15 @@ class ExecutionPgModel extends BasePgModel<PostgresExecution, PostgresExecutionR
           timestamp: execution.timestamp,
           original_payload: execution.original_payload,
         })
-        .returning('cumulus_id');
+        .returning('cumulus_id'),
+      this.retryConfiguration());
     }
-    return await knexOrTrx(this.tableName)
+    return await pRetry(async () => await knexOrTrx(this.tableName)
       .insert(execution)
       .onConflict('arn')
       .merge()
-      .returning('cumulus_id');
+      .returning('cumulus_id'),
+    this.retryConfiguration());
   }
 
   /**
@@ -54,14 +57,15 @@ class ExecutionPgModel extends BasePgModel<PostgresExecution, PostgresExecutionR
   ): Promise<Array<number>> {
     const { limit, offset } = params || {};
     const executionCumulusIdsArray = [executionCumulusIds].flat();
-    const executions = await knexOrTrx(this.tableName)
-      .whereIn('cumulus_id', executionCumulusIdsArray)
-      .modify((query) => {
-        if (limit) query.limit(limit);
-        if (offset) query.offset(offset);
-      });
-    return executions;
+    return await pRetry(async () => {
+      const executions = await knexOrTrx(this.tableName)
+        .whereIn('cumulus_id', executionCumulusIdsArray)
+        .modify((query) => {
+          if (limit) query.limit(limit);
+          if (offset) query.offset(offset);
+        });
+      return executions;
+    }, this.retryConfiguration());
   }
 }
-
 export { ExecutionPgModel };

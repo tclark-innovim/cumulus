@@ -91,13 +91,18 @@ resource "aws_lambda_function" "process_dead_letter_archive" {
 
   environment {
     variables = {
-      system_bucket   = var.system_bucket
-      stackName       = var.prefix
-      ExecutionsTable = var.dynamo_tables.executions.name
-      GranulesTable   = var.dynamo_tables.granules.name
-      PdrsTable       = var.dynamo_tables.pdrs.name
-      dbHeartBeat     = var.rds_connection_heartbeat
-      databaseCredentialSecretArn    = var.rds_user_access_secret_arn
+      system_bucket                    = var.system_bucket
+      stackName                        = var.prefix
+      ExecutionsTable                  = var.dynamo_tables.executions.name
+      GranulesTable                    = var.dynamo_tables.granules.name
+      PdrsTable                        = var.dynamo_tables.pdrs.name
+      dbHeartBeat                      = var.rds_connection_heartbeat
+      dbRetryFailedConnection          = var.db_retry_failed_connection
+      dbRetryConfigMaxTimeout          = lookup(var.db_retry_configuration, "max_timeout", "")
+      dbRetryConfigMinTimeout          = lookup(var.db_retry_configuration, "min_timeout", "")
+      dbRetryConfigFactor              = lookup(var.db_retry_configuration, "factor", "")
+      dbRetryConfigRetries             = lookup(var.db_retry_configuration, "retries", "")
+      databaseCredentialSecretArn      = var.rds_user_access_secret_arn
       RDS_DEPLOYMENT_CUMULUS_VERSION = "5.0.0"
     }
   }

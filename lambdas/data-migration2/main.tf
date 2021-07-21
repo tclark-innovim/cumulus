@@ -89,12 +89,17 @@ resource "aws_lambda_function" "data_migration2" {
   environment {
     variables = {
       databaseCredentialSecretArn = var.rds_user_access_secret_arn
+      dbHeartBeat                 = var.rds_connection_heartbeat
+      dbRetryConfigMaxTimeout          = lookup(var.db_retry_configuration, "max_timeout", "")
+      dbRetryConfigMinTimeout          = lookup(var.db_retry_configuration, "min_timeout", "")
+      dbRetryConfigFactor              = lookup(var.db_retry_configuration, "factor", "")
+      dbRetryConfigRetries             = lookup(var.db_retry_configuration, "retries", "")
+      dbRetryFailedConnection     = var.db_retry_failed_connection
       ExecutionsTable             = var.dynamo_tables.executions.name
       GranulesTable               = var.dynamo_tables.granules.name
       PdrsTable                   = var.dynamo_tables.pdrs.name
-      dbHeartBeat                 = var.rds_connection_heartbeat
-      system_bucket               = var.system_bucket
       stackName                   = var.prefix
+      system_bucket               = var.system_bucket
     }
   }
 

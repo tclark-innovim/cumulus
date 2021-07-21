@@ -1,37 +1,47 @@
 import Knex from 'knex';
+import pRetry from 'p-retry';
 
 import { RecordDoesNotExist } from '@cumulus/errors';
-
 import { tableNames } from '../tables';
-
 import { isRecordDefined } from '../database';
+import { retryConfiguration } from '../retry';
 
 class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
   readonly tableName: tableNames;
-
+  // TODO - type this elsewhere
+  readonly retryConfiguration: typeof retryConfiguration;
   constructor({
+
     tableName,
   }: {
     tableName: tableNames,
   }) {
+    if (process.env.dbHeartBeat !== 'false') {
+      process.env.dbHeartBeat = 'true';
+    }
     this.tableName = tableName;
+    // TODO - better env var names
+    this.retryConfiguration = retryConfiguration;
   }
 
   async count(
     knexOrTransaction: Knex | Knex.Transaction,
     params: ([string, string, string] | [Partial<RecordType>])[]
   ) {
-    const query = knexOrTransaction(this.tableName).where((builder) => {
-      params.forEach((param) => {
-        if (param.length === 3) {
-          builder.where(...param);
-        }
-        if (param.length === 1) {
-          builder.where(param[0]);
-        }
-      });
-    }).count();
-    return await query;
+    return await pRetry(async () => {
+      const query = knexOrTransaction(this.tableName).where((builder) => {
+        params.forEach((param) => {
+          if (param.length === 3) {
+            builder.where(...param);
+          }
+          if (param.length === 1) {
+            builder.where(param[0]);
+          }
+        });
+      }).count();
+      return await query;
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -45,15 +55,17 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     params: Partial<RecordType>
   ): Promise<RecordType> {
-    const record: RecordType = await knexOrTransaction(this.tableName)
-      .where(params)
-      .first();
+    return await pRetry(async () => {
+      const record: RecordType = await knexOrTransaction(this.tableName)
+        .where(params)
+        .first();
 
-    if (!isRecordDefined(record)) {
-      throw new RecordDoesNotExist(`Record in ${this.tableName} with identifiers ${JSON.stringify(params)} does not exist.`);
-    }
-
-    return record;
+      if (!isRecordDefined(record)) {
+        throw new RecordDoesNotExist(`Record in ${this.tableName} with identifiers ${JSON.stringify(params)} does not exist.`);
+      }
+      return record;
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -67,10 +79,13 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     params: Partial<RecordType>
   ): Promise<RecordType[]> {
-    const records: Array<RecordType> = await knexOrTransaction(this.tableName)
-      .where(params);
+    return await pRetry(async () => {
+      const records: Array<RecordType> = await knexOrTransaction(this.tableName)
+        .where(params);
 
-    return records;
+      return records;
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -86,14 +101,17 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     whereClause: Partial<RecordType>
   ): Promise<number> {
-    const record: RecordType = await knexOrTransaction(this.tableName)
-      .select('cumulus_id')
-      .where(whereClause)
-      .first();
-    if (!isRecordDefined(record)) {
-      throw new RecordDoesNotExist(`Record in ${this.tableName} with identifiers ${JSON.stringify(whereClause)} does not exist.`);
-    }
-    return record.cumulus_id;
+    return await pRetry(async () => {
+      const record: RecordType = await knexOrTransaction(this.tableName)
+        .select('cumulus_id')
+        .where(whereClause)
+        .first();
+      if (!isRecordDefined(record)) {
+        throw new RecordDoesNotExist(`Record in ${this.tableName} with identifiers ${JSON.stringify(whereClause)} does not exist.`);
+      }
+      return record.cumulus_id;
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -110,10 +128,13 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     columnNames: Array<keyof RecordType>,
     values: Array<any>
   ): Promise<Array<number>> {
-    const records: Array<RecordType> = await knexOrTransaction(this.tableName)
-      .select('cumulus_id')
-      .whereIn(columnNames, values);
-    return records.map((record) => record.cumulus_id);
+    return await pRetry(async () => {
+      const records: Array<RecordType> = await knexOrTransaction(this.tableName)
+        .select('cumulus_id')
+        .whereIn(columnNames, values);
+      return records.map((record) => record.cumulus_id);
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -127,15 +148,18 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     params: Partial<RecordType>
   ): Promise<boolean> {
-    try {
-      await this.get(knexOrTransaction, params);
-      return true;
-    } catch (error) {
-      if (error instanceof RecordDoesNotExist) {
-        return false;
+    return await pRetry(async () => {
+      try {
+        await this.get(knexOrTransaction, params);
+        return true;
+      } catch (error) {
+        if (error instanceof RecordDoesNotExist) {
+          return false;
+        }
+        throw error;
       }
-      throw error;
-    }
+    },
+    this.retryConfiguration());
   }
 
   /**
@@ -149,9 +173,10 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     item: ItemType
   ): Promise<number[]> {
-    return await knexOrTransaction(this.tableName)
+    return await pRetry(() => knexOrTransaction(this.tableName)
       .insert(item)
-      .returning('cumulus_id');
+      .returning('cumulus_id'),
+    this.retryConfiguration());
   }
 
   /**
@@ -165,9 +190,10 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     knexOrTransaction: Knex | Knex.Transaction,
     params: Partial<RecordType>
   ): Promise<number> {
-    return await knexOrTransaction(this.tableName)
+    return await pRetry(() => knexOrTransaction(this.tableName)
       .where(params)
-      .del();
+      .del(),
+    this.retryConfiguration());
   }
 
   /**
@@ -185,9 +211,10 @@ class BasePgModel<ItemType, RecordType extends { cumulus_id: number }> {
     updateParams: Partial<RecordType>,
     returning: Array<string> = []
   ) {
-    return await knexOrTransaction(this.tableName)
+    return await pRetry(() => knexOrTransaction(this.tableName)
       .where(whereClause)
-      .update(updateParams, returning);
+      .update(updateParams, returning),
+    this.retryConfiguration());
   }
 }
 

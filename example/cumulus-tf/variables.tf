@@ -424,3 +424,17 @@ variable "cmr_custom_host" {
   type        = string
   default     = null
 }
+
+
+## DB retry variable
+variable "db_retry_failed_connection" {
+  description = "If true, Core modules utilizing the database package will retry connection/query attempts that fail due to timeout/reserved connection errors"
+  type = bool
+  default = true
+}
+
+variable "db_retry_configuration" {
+  description = "Configuration object for `db_retry_failed_connection` that allows tuning of 'retries', 'maxTimeout', 'minTimeout', 'factor' from https://github.com/tim-kos/node-retry#retryoperationoptions on database connection failures"
+  type = map(string)
+  default = {}
+}

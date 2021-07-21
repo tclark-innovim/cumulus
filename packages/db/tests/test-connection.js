@@ -133,19 +133,27 @@ test('getKnexClient with heartbeat check enabled and invalid db_config throws er
     }));
   });
 
-test.serial('queryHeartbeat retries and does not throw error when KnexTimeOutError is thrown on the first attempt',
+test.serial('queryHeartbeat retries and does not throw error when KnexTimeOutError is thrown on the first attempt and dbRetryFailedConnection is set',
   async (t) => {
     const knexRawStub = sinon.stub();
     knexRawStub.onCall(0).throws(knexFakeError);
     knexRawStub.onCall(1).returns(Promise.resolve());
-    await t.notThrowsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub } }));
+    await t.notThrowsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub }, env: { dbRetryFailedConnection: 'true' } }));
+  });
+
+test.serial('queryHeartbeat throws error when KnexTimeOutError is thrown on the first attempt',
+  async (t) => {
+    const knexRawStub = sinon.stub();
+    knexRawStub.onCall(0).throws(knexFakeError);
+    knexRawStub.onCall(1).returns(Promise.resolve());
+    await t.throwsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub }, env: { dbRetryFailedConnection: 'false' } }));
   });
 
 test.serial('queryHeartbeat throws when non-KnexTimeOutError error is thrown',
   async (t) => {
     const knexRawStub = sinon.stub();
     knexRawStub.onCall(0).throws(new Error('some random error'));
-    await t.throwsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub } }));
+    await t.throwsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub }, env: { dbRetryFailedConnection: 'true' } }));
   });
 
 test.serial('queryHeartbeat throws error when KnexTimeOutError is thrown repeatedly',
@@ -154,5 +162,11 @@ test.serial('queryHeartbeat throws error when KnexTimeOutError is thrown repeate
     knexRawStub.onCall(0).throws(knexFakeError);
     knexRawStub.onCall(1).throws(knexFakeError);
     knexRawStub.onCall(2).returns(Promise.resolve());
-    await t.throwsAsync(async () => await queryHeartbeat({ knex: { raw: knexRawStub } }));
+    await t.throwsAsync(
+      async () =>
+        await queryHeartbeat({
+          knex: { raw: knexRawStub },
+          env: { dbRetryFailedConnection: true, dbRetryConfigRetries: 1 },
+        })
+    );
   });
