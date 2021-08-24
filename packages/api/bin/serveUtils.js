@@ -3,70 +3,184 @@
 const indexer = require('@cumulus/es-client/indexer');
 const models = require('../models');
 const { getESClientAndIndex } = require('./local-test-defaults');
+const {
+  erasePostgresTables,
+} = require('./serve');
+const {
+  GranulesExecutionsPgModel,
+  RulePgModel,
+  GranulePgModel,
+  PdrPgModel,
+  ExecutionPgModel,
+  CollectionPgModel,
+  ProviderPgModel,
+  translateApiCollectionToPostgresCollection,
+  translateApiProviderToPostgresProvider,
+  translateApiExecutionToPostgresExecution,
+  translateApiGranuleToPostgresGranule,
+  translateApiPdrToPostgresPdr,
+  translateApiRuleToPostgresRule,
+  getKnexClient,
+  localStackConnectionEnv,
+  envParams,
+  createTestDatabase
+} = require('@cumulus/db');
+const { log } = require('console');
+
+const migrationDir = 'node_modules/@cumulus/db-migration-lambda/dist/lambda/migrations';
+
+async function resetPostgresDb() {
+  const knexAdmin = await getKnexClient({ env: localStackConnectionEnv });
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+      migrationDir,
+    },
+  });
+
+  try{
+    await createTestDatabase(knexAdmin, 'postgres', localStackConnectionEnv.PG_USER);
+  } catch(error) {
+    log(`Skipping Postgres DB creation because ${error}`);
+  }
+
+  await knex.migrate.latest();
+
+  await erasePostgresTables(knex);
+
+  return;
+}
 
 async function addCollections(collections) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const collectionModel = new models.Collection();
   const es = await getESClientAndIndex();
   return await Promise.all(
-    collections.map((c) =>
-      collectionModel
-        .create(c)
-        .then((collection) =>
-          indexer.indexCollection(es.client, collection, es.index)))
+    collections.map(async (c) => {
+      const dynamoRecord = await collectionModel.create(c);
+      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      const dbRecord = await translateApiCollectionToPostgresCollection(c);
+      const collectionPgModel = new CollectionPgModel();
+      await collectionPgModel.create(knex, dbRecord);
+    })
   );
 }
 
 async function addGranules(granules) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const granuleModel = new models.Granule();
   const es = await getESClientAndIndex();
   return await Promise.all(
-    granules.map((c) =>
-      granuleModel
-        .create(c)
-        .then((granule) => indexer.indexGranule(es.client, granule, es.index)))
+    granules.map(async (g) => {
+      const dynamoRecord = await granuleModel.create(g);
+      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      const dbRecord = await translateApiGranuleToPostgresGranule(dynamoRecord, knex);
+      const granulePgModel = new GranulePgModel();
+      await granulePgModel.create(knex, dbRecord);
+    })
   );
 }
 
 async function addProviders(providers) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const providerModel = new models.Provider();
   const es = await getESClientAndIndex();
   return await Promise.all(
-    providers.map((p) =>
-      providerModel
-        .create(p)
-        .then((provider) => indexer.indexProvider(es.client, provider, es.index)))
+    providers.map(async (p) => {
+      const dynamoRecord = await providerModel.create(p);
+      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      const dbRecord = await translateApiProviderToPostgresProvider(dynamoRecord);
+      const providerPgModel = new ProviderPgModel();
+      await providerPgModel.create(knex, dbRecord);
+    })
   );
 }
 
 async function addRules(rules) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const ruleModel = new models.Rule();
   const es = await getESClientAndIndex();
   return await Promise.all(
-    rules.map((r) =>
-      ruleModel
-        .create(r)
-        .then((rule) => indexer.indexRule(es.client, rule, es.index)))
+    rules.map(async (r) => {
+      const dynamoRecord = await ruleModel.create(r);
+      await indexer.indexRule(es.client, dynamoRecord, es.index);
+      const dbRecord = await translateApiRuleToPostgresRule(dynamoRecord, knex);
+      const rulePgModel = new RulePgModel();
+      await rulePgModel.create(knex, dbRecord);
+    })
   );
 }
 
 async function addExecutions(executions) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const executionModel = new models.Execution();
   const es = await getESClientAndIndex();
-  return await Promise.all(
-    executions.map((e) =>
-      executionModel
-        .create(e)
-        .then((execution) =>
-          indexer.indexExecution(es.client, execution, es.index)))
-  );
+
+  // Since executions has a parent/child relationship with itself
+  // a fake promise is used with reduce to force records to be created
+  // synchronously
+  const starterPromise = Promise.resolve(null);
+  return await executions.reduce((p, e) => p
+    .then(async () => await executionModel.create(e))
+    .then((dynamoRecord) => {
+      translateApiExecutionToPostgresExecution(dynamoRecord, knex)
+        .then(async (dbRecord) => {
+          const executionPgModel = new ExecutionPgModel();
+          await executionPgModel.create(knex, dbRecord);
+        });
+      indexer.indexCollection(es.client, dynamoRecord, es.index);
+    }), starterPromise);
 }
 
 async function addPdrs(pdrs) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
   const pdrModel = new models.Pdr();
   const es = await getESClientAndIndex();
   return await Promise.all(
-    pdrs.map((p) =>
-      pdrModel.create(p).then((pdr) => indexer.indexPdr(es.client, pdr, es.index)))
+    pdrs.map(async (p) => {
+      const dynamoRecord = await pdrModel.create(p);
+      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      const dbRecord = await translateApiPdrToPostgresPdr(dynamoRecord, knex);
+      const pdrPgModel = new PdrPgModel();
+      await pdrPgModel.create(knex, dbRecord);
+    })
   );
 }
 
@@ -83,11 +197,12 @@ async function addReconciliationReports(reconciliationReports) {
 }
 
 module.exports = {
+  resetPostgresDb,
+  addProviders,
   addCollections,
   addExecutions,
   addGranules,
   addPdrs,
-  addProviders,
   addReconciliationReports,
   addRules,
 };

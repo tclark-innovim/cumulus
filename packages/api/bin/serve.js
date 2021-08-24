@@ -5,8 +5,21 @@ const pRetry = require('p-retry');
 const { promiseS3Upload } = require('@cumulus/aws-client/S3');
 const { s3, systemsManager } = require('@cumulus/aws-client/services');
 const { randomId, inTestMode } = require('@cumulus/common/test-utils');
+const {
+  AsyncOperationPgModel,
+  CollectionPgModel,
+  ExecutionPgModel,
+  FilePgModel,
+  getKnexClient,
+  GranulePgModel,
+  GranulesExecutionsPgModel,
+  PdrPgModel,
+  ProviderPgModel,
+  RulePgModel,
+  localStackConnectionEnv,
+} = require('@cumulus/db');
+
 const { bootstrapElasticSearch } = require('@cumulus/es-client/bootstrap');
-const { localStackConnectionEnv } = require('@cumulus/db');
 const models = require('../models');
 const testUtils = require('../lib/testUtils');
 const serveUtils = require('./serveUtils');
@@ -315,6 +328,45 @@ async function serveDistributionApi(stackName = localStackName, done) {
 }
 
 /**
+* Remove all records from api-related postgres tables
+* @param {Object} knex - knex/knex transaction object
+* @returns {[Promise]} - Array of promises with deletion results
+*/
+async function erasePostgresTables(knex) {
+  const asyncOperationPgModel = new AsyncOperationPgModel();
+  const collectionPgModel = new CollectionPgModel();
+  const executionPgModel = new ExecutionPgModel();
+  const filePgModel = new FilePgModel();
+  const granulePgModel = new GranulePgModel();
+  const granulesExecutionsPgModel = new GranulesExecutionsPgModel();
+  const pdrPgModel = new PdrPgModel();
+  const providerPgModel = new ProviderPgModel();
+  const rulePgModel = new RulePgModel();
+
+  // await granulePgModel.delete(knex, {})
+  // await pdrPgModel.delete(knex, {});
+  // await executionPgModel.delete(knex, {});
+  // await asyncOperationPgModel.delete(knex, {});
+  // await filePgModel.delete(knex, {});
+  // await granulePgModel.delete(knex, {});
+  // await rulePgModel.delete(knex, {});
+
+  const delPromises = [
+    granulePgModel.delete(knex, {}),
+    pdrPgModel.delete(knex, {}),
+    executionPgModel.delete(knex, {}),
+    asyncOperationPgModel.delete(knex, {}),
+    filePgModel.delete(knex, {}),
+    granulePgModel.delete(knex, {}),
+    rulePgModel.delete(knex, {}),
+    collectionPgModel.delete(knex, {}),
+    granulesExecutionsPgModel.delete(knex, {}),
+    providerPgModel.delete(knex, {}),
+  ];
+  await Promise.all(delPromises);
+}
+
+/**
  * erase all dynamoDB tables
  * @param {string} stackName - stack name (generally 'localrun')
  * @param {string} systemBucket - stystem bucket (generally 'localbucket' )
@@ -368,23 +420,23 @@ async function eraseDataStack(
  * @param {string} systemBucket - defaults to 'localbucket', localrun
  * @param {bool} runIt - Override check to prevent accidental AWS run.  default: 'false'.
  */
-async function resetTables(
+ async function resetTables(
   user = localUserName,
   stackName = localStackName,
   systemBucket = localSystemBucket,
   runIt = false
 ) {
   if (inTestMode() || runIt) {
+    const knex = await getKnexClient({ env: { ...localStackConnectionEnv, ...process.env } });
     await eraseDynamoTables(stackName, systemBucket);
-    // Populate tables with original test data (localstack)
-    if (inTestMode()) {
-      await createDBRecords(stackName, user);
-    }
+    await erasePostgresTables(knex);
+    await createDBRecords(stackName, user, knex);
   }
 }
 
 module.exports = {
   eraseDataStack,
+  erasePostgresTables,
   serveApi,
   serveDistributionApi,
   resetTables,
