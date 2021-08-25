@@ -86,7 +86,7 @@ async function addGranules(granules) {
   return await Promise.all(
     granules.map(async (g) => {
       const dynamoRecord = await granuleModel.create(g);
-      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      await indexer.indexGranule(es.client, dynamoRecord, es.index);
       const dbRecord = await translateApiGranuleToPostgresGranule(dynamoRecord, knex);
       const granulePgModel = new GranulePgModel();
       await granulePgModel.create(knex, dbRecord);
@@ -107,7 +107,7 @@ async function addProviders(providers) {
   return await Promise.all(
     providers.map(async (p) => {
       const dynamoRecord = await providerModel.create(p);
-      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      await indexer.indexProvider(es.client, dynamoRecord, es.index);
       const dbRecord = await translateApiProviderToPostgresProvider(dynamoRecord);
       const providerPgModel = new ProviderPgModel();
       await providerPgModel.create(knex, dbRecord);
@@ -159,7 +159,7 @@ async function addExecutions(executions) {
           const executionPgModel = new ExecutionPgModel();
           await executionPgModel.create(knex, dbRecord);
         });
-      indexer.indexCollection(es.client, dynamoRecord, es.index);
+      indexer.indexExecution(es.client, dynamoRecord, es.index);
     }), starterPromise);
 }
 
@@ -176,7 +176,7 @@ async function addPdrs(pdrs) {
   return await Promise.all(
     pdrs.map(async (p) => {
       const dynamoRecord = await pdrModel.create(p);
-      await indexer.indexCollection(es.client, dynamoRecord, es.index);
+      await indexer.indexPdr(es.client, dynamoRecord, es.index);
       const dbRecord = await translateApiPdrToPostgresPdr(dynamoRecord, knex);
       const pdrPgModel = new PdrPgModel();
       await pdrPgModel.create(knex, dbRecord);
