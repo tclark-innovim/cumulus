@@ -14,6 +14,7 @@ const {
   ExecutionPgModel,
   CollectionPgModel,
   ProviderPgModel,
+  PostgresGranuleExecution,
   translateApiCollectionToPostgresCollection,
   translateApiProviderToPostgresProvider,
   translateApiExecutionToPostgresExecution,
@@ -148,7 +149,7 @@ async function addExecutions(executions) {
   const es = await getESClientAndIndex();
 
   // Since executions has a parent/child relationship with itself
-  // a fake promise is used with reduce to force records to be created
+  // a fake promise is used with reduce() to force records to be created
   // synchronously
   const starterPromise = Promise.resolve(null);
   return await executions.reduce((p, e) => p
@@ -196,6 +197,66 @@ async function addReconciliationReports(reconciliationReports) {
   );
 }
 
+async function addGranulesExecutions(granulesExecutions) {
+  const knex = await getKnexClient({
+    env: {
+      ...envParams,
+      ...localStackConnectionEnv,
+    },
+  });
+
+  return await Promise.all(
+    granulesExecutions.map(async (ge) => {
+
+      // Fetch the Collection ID
+      let collectionCumulusId;
+      try{
+        const [ name, version ] = ge.granule.collectionId.split('___');
+        const collectionPgModel = new CollectionPgModel();
+        collectionCumulusId = await collectionPgModel.getRecordCumulusId(knex, {
+          name: name,
+          version: version
+        });
+      } catch(error) {
+          throw error;
+      }
+
+      // Fetch the Granule ID
+      let granuleCumulusId;
+      try{
+        const granulePgModel = new GranulePgModel();
+        granuleCumulusId = await granulePgModel.getRecordCumulusId(knex, {
+          granule_id: ge.granule.granuleId,
+          collection_cumulus_id: collectionCumulusId
+        });
+      } catch(error) {
+          throw error;
+      }
+
+      // Fetch the Execution ID
+      let executionCumulusId;
+      try{
+        const executionPgModel = new ExecutionPgModel();
+        executionCumulusId = await executionPgModel.getRecordCumulusId(knex, {
+          arn: ge.execution.arn
+        });
+      } catch(error) {
+          console.log('ANTHONY: ' + ge.execution.arn);
+          throw error;
+      }
+
+      // Create and insert the GranuleExecution record into the DB
+      const granulesExecutionsPgModel = new GranulesExecutionsPgModel();
+      const dbRecord = {
+        granule_cumulus_id: granuleCumulusId,
+        execution_cumulus_id: executionCumulusId
+      };
+
+      await granulesExecutionsPgModel.create(knex, dbRecord);
+      })
+  );
+}
+
 module.exports = {
   resetPostgresDb,
   addProviders,
@@ -205,4 +266,5 @@ module.exports = {
   addPdrs,
   addReconciliationReports,
   addRules,
+  addGranulesExecutions,
 };
