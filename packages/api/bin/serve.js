@@ -343,27 +343,16 @@ async function erasePostgresTables(knex) {
   const providerPgModel = new ProviderPgModel();
   const rulePgModel = new RulePgModel();
 
-  // await granulePgModel.delete(knex, {})
-  // await pdrPgModel.delete(knex, {});
-  // await executionPgModel.delete(knex, {});
-  // await asyncOperationPgModel.delete(knex, {});
-  // await filePgModel.delete(knex, {});
-  // await granulePgModel.delete(knex, {});
-  // await rulePgModel.delete(knex, {});
-
-  const delPromises = [
-    granulePgModel.delete(knex, {}),
-    pdrPgModel.delete(knex, {}),
-    executionPgModel.delete(knex, {}),
-    asyncOperationPgModel.delete(knex, {}),
-    filePgModel.delete(knex, {}),
-    granulePgModel.delete(knex, {}),
-    rulePgModel.delete(knex, {}),
-    collectionPgModel.delete(knex, {}),
-    granulesExecutionsPgModel.delete(knex, {}),
-    providerPgModel.delete(knex, {}),
-  ];
-  await Promise.all(delPromises);
+  await granulesExecutionsPgModel.delete(knex, {})
+  await granulePgModel.delete(knex, {})
+  await pdrPgModel.delete(knex, {});
+  await executionPgModel.delete(knex, {});
+  await asyncOperationPgModel.delete(knex, {});
+  await filePgModel.delete(knex, {});
+  await granulePgModel.delete(knex, {});
+  await rulePgModel.delete(knex, {});
+  await collectionPgModel.delete(knex, {});
+  await providerPgModel.delete(knex, {});
 }
 
 /**
