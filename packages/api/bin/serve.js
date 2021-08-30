@@ -343,8 +343,8 @@ async function erasePostgresTables(knex) {
   const providerPgModel = new ProviderPgModel();
   const rulePgModel = new RulePgModel();
 
-  await granulesExecutionsPgModel.delete(knex, {})
-  await granulePgModel.delete(knex, {})
+  await granulesExecutionsPgModel.delete(knex, {});
+  await granulePgModel.delete(knex, {});
   await pdrPgModel.delete(knex, {});
   await executionPgModel.delete(knex, {});
   await asyncOperationPgModel.delete(knex, {});
