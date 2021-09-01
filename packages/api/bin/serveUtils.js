@@ -28,7 +28,7 @@ const {
 } = require('@cumulus/db');
 const { log } = require('console');
 
-const migrationDir = 'node_modules/@cumulus/db-migration-lambda/dist/lambda/migrations';
+const migrationDir = 'node_modules/@cumulus/db/dist/migrations';
 
 async function resetPostgresDb() {
   const knexAdmin = await getKnexClient({ env: localStackConnectionEnv });
