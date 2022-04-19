@@ -1,5 +1,5 @@
 FROM cumuluss/cumulus-build-env:build
-RUN mkdir -p uncached && cd uncached && git clone https://github.com/nasa/cumulus && cd -
+RUN mkdir -p uncached && cd uncached && git clone https://github.com/nasa/cumulus && cd cumulus && npm install @octokit/graphql@2.1.1 simple-git@3.3.0 && cd -
 RUN git clone https://github.com/nasa/cumulus && \
   cd cumulus && npm install --no-package-lock && \
   npx lerna bootstrap --no-ci --force-local --ignore-scripts && \
