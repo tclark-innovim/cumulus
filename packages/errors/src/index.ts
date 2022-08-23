@@ -117,6 +117,9 @@ export const MissingBucketMap = createErrorType('MissingBucketMap');
  */
 export const ProviderNotFound = createErrorType('ProviderNotFound');
 
+// Other Error Types
+export const ApiCollisionError = createErrorType('ApiCollisionError');
+
 export const ConnectionTimeout = createErrorType('ConnectionTimeout');
 
 export const CumulusMessageError = createErrorType('CumulusMessageError');
@@ -131,9 +134,13 @@ export const FileNotFound = createErrorType('FileNotFound');
 
 export const FTPError = createErrorType('FTPError');
 
-export const ApiCollisionError = createErrorType('ApiCollisionError');
+export const GranuleNotPublished = createErrorType('GranuleNotPublished');
+
+export const GranuleUpsertError = createErrorType('GranuleNotPublished');
 
 export const HostNotFound = createErrorType('HostNotFound');
+
+export const IndexExistsError = createErrorType('IndexExistsError');
 
 export const InvalidArgument = createErrorType('InvalidArgument');
 
@@ -147,7 +154,13 @@ export const MissingRequiredArgument = createErrorType('MissingRequiredArgument'
 
 export const MissingRequiredEnvVar = createErrorType('MissingRequiredEnvVar');
 
+export const MissingRequiredEnvVarError = createErrorType('MissingRequiredEnvVarError');
+
 export const PDRParsingError = createErrorType('PDRParsingError');
+
+export const PostgresUpdateFailed = createErrorType('PostgresUpdateFailed');
+
+export const RecordAlreadyMigrated = createErrorType('RecordAlreadyMigrated');
 
 export const RecordDoesNotExist = createErrorType('RecordDoesNotExist');
 
@@ -155,15 +168,11 @@ export const UnexpectedFileSize = createErrorType('UnexpectedFileSize');
 
 export const UnmatchedRegexError = createErrorType('UnmatchedRegexError');
 
+export const UnmetRequirementsError = createErrorType('UnmetRequirementsError');
+
 export const UnparsableFileLocationError = createErrorType('UnparsableFileLocationError');
 
 export const ValidationError = createErrorType('ValidationError');
-
-export const MissingRequiredEnvVarError = createErrorType('MissingRequiredEnvVarError');
-
-export const RecordAlreadyMigrated = createErrorType('RecordAlreadyMigrated');
-
-export const GranuleNotPublished = createErrorType('GranuleNotPublished');
 
 export class PostgresValidationError extends ValidationError {
   detail: string | undefined;
@@ -173,9 +182,3 @@ export class PostgresValidationError extends ValidationError {
     Error.captureStackTrace(this, this.constructor);
   }
 }
-
-export const PostgresUpdateFailed = createErrorType('PostgresUpdateFailed');
-
-export const IndexExistsError = createErrorType('IndexExistsError');
-
-export const UnmetRequirementsError = createErrorType('UnmetRequirementsError');

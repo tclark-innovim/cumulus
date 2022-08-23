@@ -7,6 +7,8 @@ const sinon = require('sinon');
 const test = require('ava');
 const omit = require('lodash/omit');
 const sortBy = require('lodash/sortBy');
+const isMatch = require('lodash/isMatch');
+
 const cryptoRandomString = require('crypto-random-string');
 const {
   CollectionPgModel,
@@ -44,6 +46,8 @@ const {
   s3ObjectExists,
   s3PutObject,
 } = require('@cumulus/aws-client/S3');
+
+const { removeNilProperties } = require('@cumulus/common/util');
 
 const {
   secretsManager,
@@ -116,6 +120,17 @@ async function runTestUsingBuckets(buckets, testFunction) {
   } finally {
     await Promise.all(buckets.map(recursivelyDeleteS3Bucket));
   }
+}
+
+function compareEsGranuleAndApiGranule(t, apiGranule, fetchedEsRecord) {
+  t.deepEqual(
+    { ...apiGranule, _id: fetchedEsRecord._id },
+    removeNilProperties(fetchedEsRecord)
+  );
+}
+
+function sortTestFilesObject(files) {
+  return sortBy(files, (file) => getFileNameFromKey(file.key));
 }
 
 /**
@@ -2415,6 +2430,457 @@ test.serial('PUT returns an updated granule with an undefined execution', async 
 
   t.is(fetchedPostgresRecord.status, 'failed');
   t.deepEqual(fetchedPostgresRecord.error, { some: 'error' });
+});
+
+// PUT overwrite logic tests
+
+test.serial.only('PUT handles modified granule with explicitly undefined values', async (t) => {
+  const timestamp = Date.now();
+  const createdAt = timestamp - 1000000;
+
+  const undefinedKeys = [
+    'beginningDateTime',
+    'cmrLink',
+    'dataType',
+    'duration',
+    'endingDateTime',
+    'error',
+    'files',
+    'lastUpdateDateTime',
+    'pdrName',
+    'productionDateTime',
+    'productVolume',
+    'provider',
+    'queryFields',
+    'timeToArchive',
+    'timeToPreprocess',
+    'version',
+    'processingStartDateTime',
+    'processingEndDateTime',
+  ];
+
+  const newGranule = fakeGranuleFactoryV2({
+    beginningDateTime: '2018-12-22T17:30:31.424Z',
+    cmrLink: 'fakeCmrLink',
+    collectionId: t.context.collectionId,
+    createdAt,
+    dataType: 'someDataType',
+    duration: 462468124,
+    endingDateTime: '2018-12-23T17:30:31.424Z',
+    error: { text: 'some error' },
+    execution: t.context.executionUrl,
+    files: [{ bucket: 'foo', key: 'bar' }],
+    lastUpdateDateTime: '2018-12-24T17:30:31.424Z',
+    processingEndDateTime: '2018-12-24T17:30:31.424Z',
+    processingStartDateTime: '2018-12-24T17:30:31.424Z',
+    productionDateTime: '2018-12-24T17:30:31.424Z',
+    productVolume: '10',
+    published: true,
+    queryFields: { foo: 'bar' },
+    timestamp,
+    timeToArchive: 5,
+    timeToPreprocess: 10,
+    updatedAt: 200,
+    version: '001',
+  });
+
+  const response = await request(app)
+    .post('/granules')
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(newGranule)
+    .expect(200);
+
+  t.is(response.statusCode, 200);
+
+  const modifiedGranule = {
+    ...newGranule,
+  };
+
+  modifiedGranule.published = undefined; // published takes a default value of 'false'
+
+  undefinedKeys.forEach((key) => {
+    modifiedGranule[key] = undefined;
+  });
+
+  await request(app)
+    .post(`/granules/${newGranule.granuleId}/executions`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send({
+      collectionId: t.context.collectionId,
+      executionArn: t.context.executionArn,
+      granuleId: newGranule.granuleId,
+    })
+    .expect(200);
+
+  delete modifiedGranule.processingStartDateTime;
+  const modifiedResponse = await request(app)
+    .put(`/granules/${newGranule.granuleId}`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(modifiedGranule)
+    .expect(200);
+
+  t.is(modifiedResponse.statusCode, 200);
+
+  const fetchedPostgresRecord = await granulePgModel.get(
+    t.context.knex,
+    {
+      granule_id: newGranule.granuleId,
+      collection_cumulus_id: t.context.collectionCumulusId,
+    }
+  );
+
+  const fetchedEsRecord = await t.context.esGranulesClient.get(
+    newGranule.granuleId
+  );
+
+  const apiGranule = await translatePostgresGranuleToApiGranule({
+    granulePgRecord: fetchedPostgresRecord,
+    knexOrTransaction: t.context.knex,
+  });
+
+  t.is(fetchedPostgresRecord.status, 'completed');
+  // Validate undefined keys set to undefined
+  t.false(Object.keys(apiGranule).some((key) => {
+    if (undefinedKeys.includes(key)) {
+      console.log(`**Error** ${key} should be undefined!`);
+    }
+    return undefinedKeys.includes(key);
+  }));
+  compareEsGranuleAndApiGranule(t, apiGranule, fetchedEsRecord);
+  t.deepEqual(
+    removeNilProperties({ ...modifiedGranule, published: false }),
+    apiGranule
+  );
+});
+
+test.serial.only('PUT handles modified granule with explicitly null values', async (t) => {
+  const timestamp = Date.now();
+  const createdAt = timestamp - 1000000;
+
+  const nullableKeys = [
+    'beginningDateTime',
+    'cmrLink',
+    'dataType',
+    'duration',
+    'endingDateTime',
+    'error',
+    'files',
+    'lastUpdateDateTime',
+    'pdrName',
+    'productionDateTime',
+    'productVolume',
+    'provider',
+    'published',
+    'queryFields',
+    'timeToArchive',
+    'timeToPreprocess',
+    'version',
+  ];
+
+  const newGranule = fakeGranuleFactoryV2({
+    beginningDateTime: '2018-12-22T17:30:31.424Z',
+    cmrLink: 'fakeCmrLink',
+    collectionId: t.context.collectionId,
+    createdAt,
+    dataType: 'someDataType',
+    duration: 462468124,
+    endingDateTime: '2018-12-23T17:30:31.424Z',
+    error: { text: 'some error' },
+    execution: t.context.executionUrl,
+    files: [{ bucket: 'foo', key: 'bar' }],
+    lastUpdateDateTime: '2018-12-24T17:30:31.424Z',
+    processingEndDateTime: '2018-12-24T17:30:31.424Z',
+    processingStartDateTime: '2018-12-24T17:30:31.424Z',
+    productionDateTime: '2018-12-24T17:30:31.424Z',
+    productVolume: '10',
+    published: true,
+    queryFields: { foo: 'bar' },
+    timestamp,
+    timeToArchive: 5,
+    timeToPreprocess: 10,
+    updatedAt: 200,
+    version: '001',
+  });
+
+  const response = await request(app)
+    .post('/granules')
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(newGranule)
+    .expect(200);
+
+  t.is(response.statusCode, 200);
+
+  const modifiedGranule = {
+    ...newGranule,
+  };
+
+  nullableKeys.forEach((key) => {
+    modifiedGranule[key] = null;
+  });
+
+  await request(app)
+    .post(`/granules/${newGranule.granuleId}/executions`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send({
+      collectionId: t.context.collectionId,
+      executionArn: t.context.executionArn,
+      granuleId: newGranule.granuleId,
+    })
+    .expect(200);
+
+  delete modifiedGranule.processingStartDateTime;
+  const modifiedResponse = await request(app)
+    .put(`/granules/${newGranule.granuleId}`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(modifiedGranule)
+    .expect(200);
+
+  t.is(modifiedResponse.statusCode, 200);
+
+  const fetchedPostgresRecord = await granulePgModel.get(
+    t.context.knex,
+    {
+      granule_id: newGranule.granuleId,
+      collection_cumulus_id: t.context.collectionCumulusId,
+    }
+  );
+
+  const fetchedEsRecord = await t.context.esGranulesClient.get(
+    newGranule.granuleId
+  );
+
+  const apiGranule = await translatePostgresGranuleToApiGranule({
+    granulePgRecord: fetchedPostgresRecord,
+    knexOrTransaction: t.context.knex,
+  });
+
+  t.is(fetchedPostgresRecord.status, 'completed');
+  // Validate nullable keys set to null
+  t.false(Object.keys(apiGranule).some((key) => {
+    if (nullableKeys.includes(key)) {
+      console.log(`**Error** ${key} should be null!`);
+    }
+    return nullableKeys.includes(key);
+  }));
+  compareEsGranuleAndApiGranule(t, apiGranule, fetchedEsRecord);
+  t.deepEqual(removeNilProperties(modifiedGranule), apiGranule);
+});
+
+test.serial.only('PUT overwrites or removes all fields from existing granule', async (t) => {
+  const timestamp = Date.now();
+  const createdAt = timestamp - 1000000;
+
+  const originalGranule = fakeGranuleFactoryV2({
+    beginningDateTime: '2018-12-22T17:30:31.424Z',
+    cmrLink: 'fakeCmrLink',
+    collectionId: t.context.collectionId,
+    createdAt: 200,
+    dataType: 'someDataType',
+    duration: 462468124,
+    endingDateTime: '2018-12-23T17:30:31.424Z',
+    error: { text: 'some error' },
+    execution: t.context.executionUrl,
+    files: [{ bucket: 'foo', key: 'bar' }],
+    lastUpdateDateTime: '2018-12-24T17:30:31.424Z',
+    processingEndDateTime: '2018-12-24T17:30:31.424Z',
+    processingStartDateTime: '2018-12-24T17:30:31.424Z',
+    productionDateTime: '2018-12-24T17:30:31.424Z',
+    productVolume: '10',
+    published: true,
+    queryFields: { foo: 'bar' },
+    timestamp: Date.now(),
+    timeToArchive: 5,
+    timeToPreprocess: 10,
+    updatedAt: 200,
+  });
+
+  const response = await request(app)
+    .post('/granules')
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(originalGranule)
+    .expect(200);
+
+  t.is(response.statusCode, 200);
+
+  const newGranule = fakeGranuleFactoryV2({
+    status: 'failed',
+    granuleId: originalGranule.granuleId,
+    collectionId: t.context.collectionId,
+    createdAt,
+    updatedAt: createdAt,
+    execution: t.context.executionUrl,
+    timestamp,
+  });
+
+  await request(app)
+    .post(`/granules/${newGranule.granuleId}/executions`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send({
+      collectionId: t.context.collectionId,
+      executionArn: t.context.executionArn,
+      granuleId: newGranule.granuleId,
+    })
+    .expect(200);
+
+  const modifiedResponse = await request(app)
+    .put(`/granules/${newGranule.granuleId}`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(newGranule)
+    .expect(200);
+
+  t.is(modifiedResponse.statusCode, 200);
+
+  const fetchedPostgresRecord = await granulePgModel.get(
+    t.context.knex,
+    {
+      granule_id: newGranule.granuleId,
+      collection_cumulus_id: t.context.collectionCumulusId,
+    }
+  );
+
+  const fetchedEsRecord = await t.context.esGranulesClient.get(
+    newGranule.granuleId
+  );
+
+  t.deepEqual(JSON.parse(modifiedResponse.text), {
+    message: `Successfully updated granule with Granule Id: ${newGranule.granuleId}, Collection Id: ${newGranule.collectionId}`,
+  });
+
+  const apiGranule = await translatePostgresGranuleToApiGranule({
+    granulePgRecord: fetchedPostgresRecord,
+    knexOrTransaction: t.context.knex,
+  });
+
+  compareEsGranuleAndApiGranule(t, apiGranule, fetchedEsRecord);
+  t.deepEqual(newGranule, apiGranule);
+});
+
+test.serial('PUT overwrites, updating file records, preserving old file record', async (t) => {
+  const timestamp = Date.now();
+  const createdAt = timestamp - 1000000;
+
+  const originalGranule = fakeGranuleFactoryV2({
+    beginningDateTime: '2018-12-22T17:30:31.424Z',
+    cmrLink: 'fakeCmrLink',
+    collectionId: t.context.collectionId,
+    createdAt: 200,
+    dataType: 'someDataType',
+    duration: 462468124,
+    endingDateTime: '2018-12-23T17:30:31.424Z',
+    error: { text: 'some error' },
+    execution: t.context.executionUrl,
+    files: [{ bucket: 'foo', key: 'bar' }],
+    lastUpdateDateTime: '2018-12-24T17:30:31.424Z',
+    processingEndDateTime: '2018-12-24T17:30:31.424Z',
+    processingStartDateTime: '2018-12-24T17:30:31.424Z',
+    productionDateTime: '2018-12-24T17:30:31.424Z',
+    productVolume: '10',
+    published: true,
+    queryFields: { foo: 'bar' },
+    timestamp: Date.now(),
+    timeToArchive: 5,
+    timeToPreprocess: 10,
+    updatedAt: 200,
+    version: '001',
+  });
+
+  const response = await request(app)
+    .post('/granules')
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(originalGranule)
+    .expect(200);
+
+  t.is(response.statusCode, 200);
+
+  const fetchedOriginalPgRecord = await granulePgModel.get(
+    t.context.knex,
+    {
+      granule_id: originalGranule.granuleId,
+      collection_cumulus_id: t.context.collectionCumulusId,
+    }
+  );
+
+  const fetchedOriginalPgFiles = await filePgModel.search(
+    t.context.knex,
+    {
+      granule_cumulus_id: fetchedOriginalPgRecord.cumulus_id,
+    }
+  );
+
+  const newGranule = fakeGranuleFactoryV2({
+    status: 'failed',
+    granuleId: originalGranule.granuleId,
+    collectionId: t.context.collectionId,
+    createdAt,
+    updatedAt: createdAt,
+    execution: t.context.executionUrl,
+    files: [{ bucket: 'newBucket', key: 'newFile' }, { bucket: 'foo', key: 'bar' }],
+  });
+
+  const modifiedResponse = await request(app)
+    .put(`/granules/${newGranule.granuleId}`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send(newGranule)
+    .expect(200);
+
+  t.is(modifiedResponse.statusCode, 200);
+
+  await request(app)
+    .post(`/granules/${newGranule.granuleId}/executions`)
+    .set('Authorization', `Bearer ${jwtAuthToken}`)
+    .set('Accept', 'application/json')
+    .send({
+      collectionId: t.context.collectionId,
+      executionArn: t.context.executionArn,
+      granuleId: newGranule.granuleId,
+    })
+    .expect(200);
+
+  const fetchedPostgresRecord = await granulePgModel.get(
+    t.context.knex,
+    {
+      granule_id: newGranule.granuleId,
+      collection_cumulus_id: t.context.collectionCumulusId,
+    }
+  );
+
+  const fetchedEsRecord = await t.context.esGranulesClient.get(
+    newGranule.granuleId
+  );
+
+  const fetchedUpdatedPgFiles = await filePgModel.search(
+    t.context.knex,
+    {
+      granule_cumulus_id: fetchedPostgresRecord.cumulus_id,
+    }
+  );
+
+  const apiGranule = await translatePostgresGranuleToApiGranule({
+    granulePgRecord: fetchedPostgresRecord,
+    knexOrTransaction: t.context.knex,
+  });
+  const matchingFileRecord = fetchedUpdatedPgFiles.filter((file) => {
+    const origFile = fetchedOriginalPgFiles[0];
+    return isMatch(
+      [file.key, file.bucket, file.cumulus_id, file.granule_cumulus_id],
+      [origFile.key, origFile.bucket, origFile.cumulus_id, origFile.granule_cumulus_id]
+    );
+  });
+
+  compareEsGranuleAndApiGranule(t, apiGranule, fetchedEsRecord);
+  t.deepEqual(apiGranule.files, [{ bucket: 'newBucket', key: 'newFile' }, { bucket: 'foo', key: 'bar' }]);
+  t.is(matchingFileRecord.length, 1);
 });
 
 test.serial('PUT returns an updated granule with associated execution', async (t) => {

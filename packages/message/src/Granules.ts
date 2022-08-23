@@ -120,13 +120,18 @@ export const getGranuleTimeToArchive = ({
  * @param {string} date - Date string, possibly in multiple formats
  * @returns {string} Standardized ISO date string
  */
-const convertDateToISOString = (date: string) => new Date(date).toISOString();
+const convertDateToISOString = (date: string) => {
+  if (date) {
+    return new Date(date).toISOString();
+  }
+  return undefined;
+};
 
 function isProcessingTimeInfo(
   info: ExecutionProcessingTimes | {} = {}
 ): info is ExecutionProcessingTimes {
-  return (info as ExecutionProcessingTimes)?.processingStartDateTime !== undefined
-    && (info as ExecutionProcessingTimes)?.processingEndDateTime !== undefined;
+  return (info as ExecutionProcessingTimes)?.processingStartDateTime !== (undefined || null)
+    && (info as ExecutionProcessingTimes)?.processingEndDateTime !== (undefined || null);
 }
 
 /**
@@ -238,6 +243,10 @@ export const generateGranuleApiRecord = async ({
   productVolume: string,
   timeToPreprocess: number,
   timeToArchive: number,
+}, {
+  omitNulls = true,
+}: {
+  omitNulls: boolean,
 }): Promise<ApiGranule> => {
   if (!granule.granuleId) throw new CumulusMessageError(`Could not create granule record, invalid granuleId: ${granule.granuleId}`);
 
@@ -253,18 +262,31 @@ export const generateGranuleApiRecord = async ({
   } = granule;
 
   const now = Date.now();
-  const recordUpdatedAt = updatedAt ?? now;
-  const recordTimestamp = timestamp ?? now;
+  const recordUpdatedAt = updatedAt ?? now; //TODO - this is now like in the message write.   Interesting
+  const recordTimestamp = timestamp ?? now; //TODO - this is now like in the message write.   Interesting
 
   // Get CMR temporalInfo
-  const temporalInfo = await getGranuleCmrTemporalInfo({
+  let temporalInfo = {};
+  // TODO: Make this better / units / etc
+  if (!omitNulls) {
+    temporalInfo = {
+      beginningDateTime: null,
+      endingDateTime: null,
+      lastUpdateDateTime: null,
+      productionDateTime: null,
+    };
+  }
+
+  const granuleCmrTemporalInfo = await getGranuleCmrTemporalInfo({
     granule,
     cmrTemporalInfo,
     cmrUtils,
   });
-  const updatedProcessingTimeInfo = getGranuleProcessingTimeInfo(processingTimeInfo);
 
-  const record = {
+  temporalInfo = { ...temporalInfo, ...granuleCmrTemporalInfo };
+
+  const updatedProcessingTimeInfo = getGranuleProcessingTimeInfo(processingTimeInfo);
+  let record: ApiGranule = {
     granuleId,
     pdrName,
     collectionId,
@@ -287,5 +309,14 @@ export const generateGranuleApiRecord = async ({
     queryFields,
   };
 
-  return <ApiGranule>omitBy(record, isNil);
+  if (omitNulls) {
+    return <ApiGranule>omitBy(record, isNil);
+  }
+
+  Object.entries(record).forEach(([key, value]) => {
+    if (value === undefined) {
+      record = { ...record, ...{ [key]: null } };
+    }
+  });
+  return record;
 };

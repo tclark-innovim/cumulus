@@ -182,7 +182,7 @@ const putGranule = async (req, res) => {
   }
 
   try {
-    await updateGranuleFromApi(apiGranule, knex, esClient);
+    await updateGranuleFromApi(apiGranule, knex, esClient, true);
   } catch (error) {
     log.error('failed to update granule', error);
     return res.boom.badRequest(errorify(error));
@@ -345,8 +345,8 @@ async function put(req, res) {
 
   if (!req.body.action) {
     if (
-      req.body.granuleId === req.params.granuleName &&
-      req.body.collectionId === req.params.collectionId
+      req.body.granuleId === req.params.granuleName
+      && req.body.collectionId === req.params.collectionId
     ) {
       return putGranule(req, res);
     }

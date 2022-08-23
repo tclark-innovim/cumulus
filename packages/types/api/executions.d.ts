@@ -1,8 +1,8 @@
 export type ExecutionRecordStatus = 'completed' | 'failed' | 'running' | 'unknown';
 
 export type ExecutionProcessingTimes = {
-  processingStartDateTime: string
-  processingEndDateTime: string
+  processingStartDateTime: string | null;
+  processingEndDateTime: string | null;
 };
 
 export interface ExecutionRecord {

@@ -9,7 +9,7 @@ export type GranuleTemporalInfo = {
   lastUpdateDateTime: string
 };
 
-export interface MessageGranule {
+export interface MessageGranule { // TODO is this really a *message* granule?
   granuleId: string
   cmrLink?: string
   published?: boolean
@@ -27,18 +27,19 @@ export type ApiGranule = {
   granuleId: string
   collectionId: string
   status: GranuleStatus
-  execution?: string
-  cmrLink?: string
-  published?: boolean
-  pdrName?: string
-  provider?: string
-  error?: Object
+  execution?: string | null | undefined
+  cmrLink?: string | null | undefined
+  published?: boolean | null | undefined
+  pdrName?: string | null | undefined
+  provider?: string | null | undefined
+  error?: Object | null | undefined
   createdAt: number
-  timestamp?: number
+  timestamp?: number | null | undefined
   updatedAt: number
-  duration?: number
-  productVolume?: string
-  timeToPreprocess?: number
-  timeToArchive?: number
-  files?: Omit<import('./files').ApiFile, 'granuleId'>[]
+  duration?: number | null | undefined
+  productVolume?: string | null | undefined
+  timeToPreprocess?: number | null | undefined
+  timeToArchive?: number | null | undefined
+  files?: Omit<import('./files').ApiFile, 'granuleId'>[] | null | undefined
+  queryFields?: Object | null | undefined
 } & OptionalGranuleTemporalInfo & OptionalGranuleProcessingInfo;
