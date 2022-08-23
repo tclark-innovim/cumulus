@@ -5,6 +5,8 @@ import { ApiGranule, GranuleStatus } from '@cumulus/types/api/granules';
 import { removeNilProperties } from '@cumulus/common/util';
 import { ValidationError } from '@cumulus/errors';
 
+import cloneDeep from 'lodash/cloneDeep';
+
 import { CollectionPgModel } from '../models/collection';
 import { PdrPgModel } from '../models/pdr';
 import { ProviderPgModel } from '../models/provider';
@@ -129,12 +131,13 @@ export const translatePostgresGranuleToApiGranule = async ({
  * @returns {Object} A granule PG record
  */
 export const translateApiGranuleToPostgresGranule = async (
-  dynamoRecord: AWS.DynamoDB.DocumentClient.AttributeMap,
+  originalDynamoRecord: AWS.DynamoDB.DocumentClient.AttributeMap,
   knexOrTransaction: Knex | Knex.Transaction,
   collectionPgModel = new CollectionPgModel(),
   pdrPgModel = new PdrPgModel(),
   providerPgModel = new ProviderPgModel()
 ): Promise<PostgresGranule> => {
+  const dynamoRecord = cloneDeep(originalDynamoRecord);
   const { name, version } = deconstructCollectionId(dynamoRecord.collectionId);
   const granuleRecord: PostgresGranule = {
     granule_id: dynamoRecord.granuleId,
@@ -173,8 +176,7 @@ export const translateApiGranuleToPostgresGranule = async (
       ? new Date(dynamoRecord.processingStartDateTime) : undefined,
     production_date_time: dynamoRecord.productionDateTime
       ? new Date(dynamoRecord.productionDateTime) : undefined,
-    timestamp: dynamoRecord.timestamp
-      ? new Date(dynamoRecord.timestamp) : undefined,
+    timestamp: dynamoRecord.timestamp ? new Date(dynamoRecord.timestamp) : undefined,
     created_at: new Date(dynamoRecord.createdAt),
     updated_at: new Date(dynamoRecord.updatedAt),
   };
