@@ -5,6 +5,7 @@ const flatten = require('lodash/flatten');
 const get = require('lodash/get');
 const pick = require('lodash/pick');
 const set = require('lodash/set');
+const isNil = require('lodash/isNil');
 const { promisify } = require('util');
 const js2xmlParser = require('js2xmlparser');
 const path = require('path');
@@ -101,9 +102,9 @@ function isISOFile(fileobject) {
 /**
  * Extracts CMR file objects from the specified granule object.
  *
- * @param {Object} granule - granule object containing CMR files within its
+ * @param {Object} granule - Cumulus granule object optionally containing CMR files within its
  *    `files` property
- * @param {Array<Object>} granule.files - array of files for a granule
+ * @param {Array<Object>} granule.files - array of files for a granule / undefined
  * @param {string} granule.granuleId - granule ID
  * @param {Function} filterFunc - function to determine if the given file object is a
       CMR file; defaults to `isCMRFile`
@@ -111,6 +112,7 @@ function isISOFile(fileobject) {
  *    `granuleId`, `bucket`, `key`, and possibly `etag` (if present on input)
  */
 function granuleToCmrFileObject({ granuleId, files = [] }, filterFunc = isCMRFile) {
+  if (isNil(files)) return []; // TODO - unit test!
   return files
     .filter(filterFunc)
     .map((file) => {
