@@ -1,5 +1,6 @@
 import { Knex } from 'knex';
 import pMap from 'p-map';
+import isNil from 'lodash/isNil';
 
 import { deleteS3Object } from '@cumulus/aws-client/S3';
 import {
@@ -31,9 +32,10 @@ const logger = new Logger({ sender: '@cumulus/api/granule-delete' });
  * @param {Array} files - A list of S3 files
  * @returns {Promise<void>}
  */
-const deleteS3Files = async (
-  files: (Omit<ApiFile, 'granuleId'> | PostgresFileRecord)[] = []
-) =>
+const deleteS3Files = async ( // TODO add unit for altered logic
+  files: (Omit<ApiFile, 'granuleId'> | PostgresFileRecord)[] | null = []
+) => {
+  if (isNil(files)) return;
   await pMap(
     files,
     async (file) => {
@@ -43,6 +45,7 @@ const deleteS3Files = async (
       );
     }
   );
+};
 
 /**
  * Delete a Granule from Postgres and/or ES, delete the Granule's
