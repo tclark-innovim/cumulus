@@ -133,6 +133,7 @@ export const translatePostgresGranuleToApiGranule = async ({
 export const translateApiGranuleToPostgresGranule = async (
   originalDynamoRecord: AWS.DynamoDB.DocumentClient.AttributeMap,
   knexOrTransaction: Knex | Knex.Transaction,
+  omitNulls: boolean = true, // TODO
   collectionPgModel = new CollectionPgModel(),
   pdrPgModel = new PdrPgModel(),
   providerPgModel = new ProviderPgModel()
@@ -181,6 +182,9 @@ export const translateApiGranuleToPostgresGranule = async (
     updated_at: new Date(dynamoRecord.updatedAt),
   };
 
+  if (omitNulls) {
+    return removeNilProperties(granuleRecord);
+  }
   return granuleRecord;
 };
 

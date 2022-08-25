@@ -262,12 +262,15 @@ export const generateGranuleApiRecord = async ({
   } = granule;
 
   const now = Date.now();
-  const recordUpdatedAt = updatedAt ?? now; //TODO - this is now like in the message write.   Interesting
-  const recordTimestamp = timestamp ?? now; //TODO - this is now like in the message write.   Interesting
 
+  const recordUpdatedAt = updatedAt ?? now;
+  const recordTimestamp = timestamp ?? now;
   // Get CMR temporalInfo
   let temporalInfo = {};
   // TODO: Make this better / units / etc
+
+  // This is required as we want to explicitly set the computed values to null for the
+  // default case that they're not generated in getGranuleCmrTemporalInfo
   if (!omitNulls) {
     temporalInfo = {
       beginningDateTime: null,
@@ -282,7 +285,6 @@ export const generateGranuleApiRecord = async ({
     cmrTemporalInfo,
     cmrUtils,
   });
-
   temporalInfo = { ...temporalInfo, ...granuleCmrTemporalInfo };
 
   const updatedProcessingTimeInfo = getGranuleProcessingTimeInfo(processingTimeInfo);

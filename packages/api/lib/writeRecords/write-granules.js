@@ -170,12 +170,14 @@ const _writePostgresGranuleViaTransaction = async ({
   executionCumulusId,
   trx,
   granulePgModel,
+  overwrite = true,
 }) => {
   const upsertQueryResult = await upsertGranuleWithExecutionJoinRecord(
     trx,
     granuleRecord,
     executionCumulusId,
-    granulePgModel
+    granulePgModel,
+    overwrite
   );
   // Ensure that we get a granule for the files even if the
   // upsert query returned an empty result
@@ -458,6 +460,7 @@ const _writeGranuleRecords = async (params) => {
     esClient = await Search.es(),
     executionCumulusId,
     granulePgModel,
+    overwrite,
   } = params;
   let pgGranule;
   log.info(
@@ -474,11 +477,13 @@ const _writeGranuleRecords = async (params) => {
         executionCumulusId,
         trx,
         granulePgModel,
+        overwrite,
       });
       await upsertEsGranule({
         esClient,
         updates: apiGranuleRecord,
         index: process.env.ES_INDEX,
+        overwrite,
       });
     });
     log.info(
@@ -537,7 +542,7 @@ const _writePostgresFilesFromApiGranuleFiles = async ({
     }
     // Skip updating files if in an 'upsert' situation with missing key/empty array
     // Per original logic
-    if (!overwriteFiles && updatedApiGranuleRecord.files.size === 0) {
+    if (!overwriteFiles && updatedApiGranuleRecord.files.length === 0) {
       log.info('Skipping file update for', files);
       return;
     }
@@ -573,7 +578,7 @@ const _writeGranule = async ({
   granulePgModel,
   knex,
   snsEventType,
-  overwriteFiles = false,
+  overwriteFiles = false, // TODO make this more generic/named to allow for update behavior
 }) => {
   try {
     const pgGranule = await _writeGranuleRecords({
@@ -583,6 +588,7 @@ const _writeGranule = async ({
       esClient,
       executionCumulusId,
       granulePgModel,
+      overwrite: overwriteFiles, // TODO -- Consider duplication at this point
     });
 
     // Reminder - this will only update the postgres files object
@@ -697,30 +703,31 @@ const writeGranuleFromApi = async (
   overwrite = false
 ) => {
   const {
-    granuleId,
-    collectionId,
-    status,
-    execution,
-    cmrLink,
-    published,
-    pdrName,
-    provider,
-    createdAt = new Date().valueOf(),
-    updatedAt,
-    duration,
-    productVolume,
-    timeToPreprocess,
-    timeToArchive,
-    timestamp,
     beginningDateTime,
+    cmrLink,
+    collectionId,
+    createdAt,
+    duration,
     endingDateTime,
-    productionDateTime,
-    lastUpdateDateTime,
-    processingStartDateTime,
-    processingEndDateTime,
-    queryFields,
+    execution,
+    granuleId,
     granulePgModel = new GranulePgModel(),
+    lastUpdateDateTime,
+    pdrName,
+    processingEndDateTime,
+    processingStartDateTime,
+    productionDateTime,
+    productVolume,
+    provider,
+    published,
+    queryFields,
+    status,
+    timestamp,
+    timeToArchive,
+    timeToPreprocess,
+    updatedAt,
   } = granuleArg;
+
   try {
     let error = granuleArg.error;
     let files = granuleArg.files;
@@ -756,6 +763,7 @@ const writeGranuleFromApi = async (
       );
     }
 
+    const defaultCreatedAt = createdAt || new Date().valueOf();
     const apiGranuleRecord = await generateGranuleApiRecord({
       granule,
       executionUrl: execution,
@@ -767,7 +775,7 @@ const writeGranuleFromApi = async (
       productVolume,
       duration,
       status,
-      workflowStartTime: createdAt,
+      workflowStartTime: defaultCreatedAt,
       files,
       error,
       pdrName,
@@ -777,13 +785,22 @@ const writeGranuleFromApi = async (
       cmrTemporalInfo,
       cmrUtils,
     }, {
-      omitNulls: !overwrite,
+      omitNulls: !overwrite, // TODO - emitNulls??
     });
 
     const postgresGranuleRecord = await translateApiGranuleToPostgresGranule(
       apiGranuleRecord,
-      knex
+      knex,
+      !overwrite
     );
+
+    // In the case that created at wasn't passed in and this is a PATCH/update
+    // operation we don't want to utilize default downstream createdAt values from the
+    // message/db package
+    if (!createdAt && overwrite === false) {
+      delete apiGranuleRecord.createdAt;
+      delete postgresGranuleRecord.createdAt;
+    }
 
     await _writeGranule({
       postgresGranuleRecord,
@@ -903,7 +920,7 @@ const writeGranulesFromMessage = async ({
         knex
       );
 
-      return _writeGranule({
+      return _writeGranule({ // TODO await?!?
         postgresGranuleRecord,
         apiGranuleRecord,
         executionCumulusId,

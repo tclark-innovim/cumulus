@@ -166,6 +166,12 @@ const putGranule = async (req, res) => {
     }
   }
 
+  // TODO - use what's in the payload, else what's in the URI.  Does this have any implications
+  // for the legacy method/
+  if (!apiGranule.granuleId) {
+    apiGranule.granuleId = req.params.granuleName;
+  }
+
   let isNewRecord = false;
   try {
     await granulePgModel.get(knex, {
@@ -182,7 +188,8 @@ const putGranule = async (req, res) => {
   }
 
   try {
-    await updateGranuleFromApi(apiGranule, knex, esClient, true);
+    // TODO this is *PATCH* behavior, ticket <> to address this
+    await updateGranuleFromApi(apiGranule, knex, esClient, false);
   } catch (error) {
     log.error('failed to update granule', error);
     return res.boom.badRequest(errorify(error));
@@ -395,7 +402,9 @@ async function putByGranuleId(req, res) {
   } = req.testContext || {};
 
   if (!req.body.action) {
-    if (req.body.granuleId === req.params.granuleName) {
+    // TODO - This was updated because patch requests should not require this
+    // IF the granulename is provided THEN check that it's the right granule.
+    if (!req.body.granuleId || req.body.granuleId === req.params.granuleName) {
       return putGranule(req, res);
     }
     return res.boom.badRequest(

@@ -26,7 +26,7 @@ export const up = async (knex: Knex): Promise<void> =>
       .comment('Flag that shows if the granule has been published in CMR');
     table
       .float('duration')
-      .comment('Ingest duration');
+      .comment('Ingest duration in seconds');
     table
       .float('time_to_archive')
       .comment('Number of seconds granule took to archive');
