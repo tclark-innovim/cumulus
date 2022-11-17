@@ -2,7 +2,6 @@
 
 const test = require('ava');
 const cryptoRandomString = require('crypto-random-string');
-const cloneDeep = require('lodash/cloneDeep');
 
 const {
   getGranuleQueryFields,
@@ -38,8 +37,6 @@ test.before((t) => {
 });
 
 test.beforeEach((t) => {
-  t.context.granuleSuccess = cloneDeep(granuleSuccess);
-  t.context.granuleFailure = cloneDeep(granuleFailure);
   t.context.provider = {
     name: cryptoRandomString({ length: 10 }),
     protocol: 's3',
@@ -196,9 +193,8 @@ test('generateGranuleApiRecord() builds successful granule record', async (t) =>
     pdrName,
     workflowStatus,
   } = t.context;
-  const granule = t.context.granuleSuccess.payload.granules[0];
-  granule.createdAt = Date.now();
-
+  const createdAt = Date.now();
+  const granule = granuleSuccess.payload.granules[0];
   const executionUrl = cryptoRandomString({ length: 10 });
 
   const processingStartDateTime = new Date(Date.UTC(2019, 6, 28)).toISOString();
@@ -207,10 +203,10 @@ test('generateGranuleApiRecord() builds successful granule record', async (t) =>
   const timeToPreprocess = getGranuleTimeToPreprocess(granule);
   const productVolume = getGranuleProductVolume(granule.files);
   const status = getGranuleStatus(workflowStatus, granule);
-  const duration = getWorkflowDuration(granule.createdAt, Date.now());
+  const duration = getWorkflowDuration(createdAt, Date.now());
 
   const record = await generateGranuleApiRecord({
-    granule: { ...granule },
+    granule: { ...granule, createdAt },
     executionUrl,
     processingTimeInfo: {
       processingStartDateTime,
@@ -235,8 +231,7 @@ test('generateGranuleApiRecord() builds successful granule record', async (t) =>
     record.files,
     granule.files
   );
-
-  t.is(record.createdAt, granule.createdAt);
+  t.is(record.createdAt, createdAt);
   t.is(typeof record.duration, 'number');
   t.is(record.status, workflowStatus);
   t.is(record.pdrName, pdrName);
@@ -349,7 +344,7 @@ test('generateGranuleApiRecord() builds granule record with correct processing a
     workflowStatus,
     timestampExtraPrecision,
   } = t.context;
-  const granule = t.context.granuleSuccess.payload.granules[0];
+  const granule = granuleSuccess.payload.granules[0];
   const executionUrl = cryptoRandomString({ length: 10 });
 
   const processingTimeInfo = {
@@ -408,7 +403,7 @@ test('generateGranuleApiRecord() honors granule.createdAt if it exists', async (
     pdrName,
   } = t.context;
 
-  const granule = t.context.granuleSuccess.payload.granules[0];
+  const granule = granuleSuccess.payload.granules[0];
   const createdAt = Date.now();
   granule.createdAt = createdAt;
   const executionUrl = cryptoRandomString({ length: 10 });
@@ -431,7 +426,7 @@ test('generateGranuleApiRecord() builds a failed granule record', async (t) => {
     collectionId,
     provider,
   } = t.context;
-  const granule = t.context.granuleFailure.payload.granules[0];
+  const granule = granuleFailure.payload.granules[0];
   const executionUrl = cryptoRandomString({ length: 10 });
   const error = {
     Error: 'error',

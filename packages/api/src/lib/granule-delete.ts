@@ -14,7 +14,7 @@ import {
   ProviderPgModel,
 } from '@cumulus/db';
 import { DeletePublishedGranule } from '@cumulus/errors';
-import { ApiFile, ApiGranuleRecord } from '@cumulus/types';
+import { ApiFile, ApiGranule } from '@cumulus/types';
 import Logger from '@cumulus/logger';
 
 const { deleteGranule } = require('@cumulus/es-client/indexer');
@@ -62,7 +62,7 @@ const deleteS3Files = async (
  */
 const deleteGranuleAndFiles = async (params: {
   knex: Knex,
-  dynamoGranule: ApiGranuleRecord,
+  dynamoGranule: ApiGranule,
   pgGranule: PostgresGranuleRecord,
   filePgModel: FilePgModel,
   granulePgModel: GranulePgModel,
