@@ -66,6 +66,21 @@ resource "aws_rds_cluster_parameter_group" "rds_cluster_group" {
   }
 }
 
+resource "aws_rds_cluster_parameter_group" "rds_updated_cluster_group" {
+  count = var.retain_upgrade_parameter_group ? 1 : 0
+  name   = "${var.prefix}-updated-cluster-parameter-group"
+  family = var.parameter_upgrade_group_family
+
+  dynamic "parameter" {
+    for_each = var.db_parameters
+    content {
+      apply_method = parameter.value["apply_method"]
+      name = parameter.value["name"]
+      value = parameter.value["value"]
+    }
+  }
+}
+
 resource "aws_rds_cluster" "cumulus" {
   depends_on              = [aws_db_subnet_group.default, aws_rds_cluster_parameter_group.rds_cluster_group]
   cluster_identifier      = var.cluster_identifier
@@ -90,5 +105,6 @@ resource "aws_rds_cluster" "cumulus" {
   tags                            = var.tags
   final_snapshot_identifier       = "${var.cluster_identifier}-final-snapshot"
   snapshot_identifier             = var.snapshot_identifier
-  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.rds_cluster_group.id
+  db_cluster_parameter_group_name = var.major_version_upgrade ? aws_rds_cluster_parameter_group.rds_updated_cluster_group[0].id : aws_rds_cluster_parameter_group.rds_cluster_group.id
+  allow_major_version_upgrade     = var.major_version_upgrade
 }

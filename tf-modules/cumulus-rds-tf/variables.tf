@@ -97,6 +97,12 @@ variable "parameter_group_family" {
   default = "aurora-postgresql10"
 }
 
+variable "parameter_upgrade_group_family" {
+  description = "Database family to use for creating database parameter group"
+  type = string
+  default = "aurora-postgresql11"
+}
+
 variable "max_capacity" {
   type = number
   default = 4
@@ -158,4 +164,16 @@ variable "db_parameters" {
       apply_method = "pending-reboot"
     }
   ]
+}
+
+variable "major_version_upgrade" {
+  description = "boolean to allow major engine version upgrades as part of deployment"
+  type = bool
+  default = false
+}
+
+variable "retain_upgrade_parameter_group" {
+  description = "boolean to allow major engine version upgrades as part of deployment"
+  type = bool
+  default = true
 }
