@@ -1,7 +1,3 @@
-variable "prefix" {
-  type = string
-}
-
 variable "aws_profile" {
   type    = string
   default = null
@@ -82,3 +78,26 @@ variable "subnets_tag_name" {
   default = "Private application *"
 }
 
+variable "parameter_group_family" {
+  description = "Database family to use for creating database parameter group"
+  type = string
+  default = "aurora-postgresql10"
+}
+
+variable "parameter_upgrade_group_family" {
+  description = "Database family to use for creating database parameter group"
+  type = string
+  default = "aurora-postgresql11"
+}
+
+variable "major_version_upgrade" {
+  description = "boolean to allow major engine version upgrades as part of deployment"
+  type = bool
+  default = false
+}
+
+variable "retain_upgrade_parameter_group" {
+  description = "boolean to allow major engine version upgrades as part of deployment"
+  type = bool
+  default = true
+}
