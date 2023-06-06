@@ -1,0 +1,96 @@
+{
+    "arn": "arn:aws:states:us-east-1:596205514787:stateMachine:squinlan-EcsLoadTestQueueGranulesWorkflow",
+    "definition": {
+        "Comment": "Load tests queue granules",
+        "StartAt": "GenerateGranules",
+        "States": {
+            "GenerateGranules": {
+                "Catch": [
+                    {
+                        "ErrorEquals": [
+                            "States.ALL"
+                        ],
+                        "Next": "WorkflowFailed",
+                        "ResultPath": "$.exception"
+                    }
+                ],
+                "Next": "QueueGranules",
+                "Parameters": {
+                    "cma": {
+                        "event.$": "$",
+                        "task_config": {
+                            "collection": "{$.meta.collection}",
+                            "count": "{$.meta.count}",
+                            "provider": "{$.meta.provider}"
+                        }
+                    }
+                },
+                "Resource": "arn:aws:lambda:us-east-1:596205514787:function:squinlan-GenerateGranules",
+                "Retry": [
+                    {
+                        "BackoffRate": 2,
+                        "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 2,
+                        "MaxAttempts": 6
+                    }
+                ],
+                "Type": "Task"
+            },
+            "QueueGranules": {
+                "Catch": [
+                    {
+                        "ErrorEquals": [
+                            "States.ALL"
+                        ],
+                        "Next": "WorkflowFailed",
+                        "ResultPath": "$.exception"
+                    }
+                ],
+                "End": true,
+                "Parameters": {
+                    "cma": {
+                        "ReplaceConfig": {
+                            "FullMessage": true
+                        },
+                        "event.$": "$",
+                        "task_config": {
+                            "childWorkflowMeta": {
+                                "interpolatedValueStackName": "{$.meta.stack}",
+                                "staticValue": "aStaticValue"
+                            },
+                            "granuleIngestWorkflow": "HelloWorldWorkflow",
+                            "internalBucket": "{$.meta.buckets.internal.name}",
+                            "preferredQueueBatchSize": "{$.meta.queueBatchSize}",
+                            "provider": "{$.meta.provider}",
+                            "queueUrl": "https://sqs.us-east-1.amazonaws.com/596205514787/squinlan-startSF",
+                            "stackName": "{$.meta.stack}"
+                        }
+                    }
+                },
+                "Resource": "arn:aws:states:us-east-1:596205514787:activity:squinlan-EcsTaskQueueGranules",
+                "Retry": [
+                    {
+                        "BackoffRate": 2,
+                        "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                        ],
+                        "IntervalSeconds": 2,
+                        "MaxAttempts": 6
+                    }
+                ],
+                "Type": "Task"
+            },
+            "WorkflowFailed": {
+                "Cause": "Workflow failed",
+                "Type": "Fail"
+            }
+        }
+    },
+    "name": "EcsLoadTestQueueGranulesWorkflow"
+}

@@ -1,0 +1,62 @@
+{
+    "cumulus_meta": {
+        "cumulus_version": "15.0.0",
+        "execution_name": null,
+        "message_source": "sfn",
+        "queueExecutionLimits": {
+            "https://sqs.us-east-1.amazonaws.com/596205514787/squinlan-ThrottledQueue": 30,
+            "https://sqs.us-east-1.amazonaws.com/596205514787/squinlan-backgroundProcessing": 5
+        },
+        "state_machine": null,
+        "system_bucket": "squinlan-internal",
+        "workflow_start_time": null
+    },
+    "exception": null,
+    "meta": {
+        "buckets": {
+            "glacier": {
+                "name": "squinlan-orca",
+                "type": "orca"
+            },
+            "internal": {
+                "name": "squinlan-internal",
+                "type": "internal"
+            },
+            "private": {
+                "name": "cumulus-sandbox-private",
+                "type": "private"
+            },
+            "protected": {
+                "name": "cumulus-sandbox-protected",
+                "type": "protected"
+            },
+            "public": {
+                "name": "cumulus-sandbox-public",
+                "type": "public"
+            }
+        },
+        "cmr": {
+            "clientId": "cumulus-core-squinlan",
+            "cmrEnvironment": "UAT",
+            "cmrLimit": 100,
+            "cmrPageSize": 50,
+            "oauthProvider": "launchpad",
+            "passwordSecretName": "squinlan-message-template-cmr-password20230513001010974600000009",
+            "provider": "CUMULUS",
+            "username": "squinlan"
+        },
+        "collection": {},
+        "distribution_endpoint": "https://0562sux2e4.execute-api.us-east-1.amazonaws.com/dev/",
+        "launchpad": {
+            "api": "launchpadApi",
+            "certificate": "certificate",
+            "passphraseSecretName": "squinlan-message-template-launchpad-passphrase2023051300101471480000000c"
+        },
+        "provider": {},
+        "stack": "squinlan",
+        "template": "s3://squinlan-internal/squinlan/workflow_template.json",
+        "workflow_name": null,
+        "workflow_tasks": {}
+    },
+    "payload": {}
+}

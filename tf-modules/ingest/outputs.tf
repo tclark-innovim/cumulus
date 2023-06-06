@@ -41,6 +41,13 @@ output "hello_world_task" {
   }
 }
 
+output "generate_granules_task" {
+  value = {
+    task_arn = aws_lambda_function.generate_granules_task.arn
+    last_modified_date = aws_lambda_function.generate_granules_task.last_modified
+  }
+}
+
 output "hyrax_metadata_updates_task" {
   value = {
     task_arn           = aws_lambda_function.hyrax_metadata_updates_task.arn

@@ -35,6 +35,16 @@ async function fetchGranuleProvider(event, providerId) {
   return JSON.parse(body);
 }
 
+async function fetchGranuleCollection(event, collectionName, collectionVersion) {
+  const { body } = await collectionsApi.getCollection({
+    prefix: event.config.stackName,
+    collectionName,
+    collectionVersion,
+  });
+
+  return JSON.parse(body);
+}
+
 /**
  * The purpose of this iterable is to avoid creating all the group and chunk arrays all
  * at once to save heap space for large event inputs. This is done by using a sequence of
@@ -174,7 +184,6 @@ async function enqueueGranuleIngestMessage({
     },
     executionNamePrefix,
   });
-
   await sendSQSMessage(queueUrl, message);
 
   return buildExecutionArn(

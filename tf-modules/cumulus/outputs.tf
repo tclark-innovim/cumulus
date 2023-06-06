@@ -119,6 +119,10 @@ output "update_granules_cmr_metadata_file_links_task" {
   value = module.ingest.update_granules_cmr_metadata_file_links_task
 }
 
+output "generate_granules_task" {
+  value = module.ingest.generate_granules_task
+}
+
 # Workflow config outputs
 
 output "workflow_config" {

@@ -1,0 +1,56 @@
+{
+  "title": "GenerateGranulesConfig",
+  "description": "Describes the configuration for the generate-granules task",
+  "type": "object",
+  "required": ["count"],
+  "properties": {
+    "count": {
+      "type": "integer",
+      "description": "Number of fake granules to generate."
+    },
+    "provider": {
+      "type": "object",
+      "required": [ "id", "host", "protocol" ],
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "host": { "type": "string" },
+        "port": { "type": "integer" },
+        "globalConnectionLimit": { "type": "integer" },
+        "protocol": {
+          "type": "string",
+          "enum": ["ftp", "sftp", "http", "https", "s3"]
+        }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "required": ["name", "version", "files"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "url_path": { "type": "string" },
+        "granuleId": { "type": "string" },
+        "sampleFileName": { "type": "string" },
+        "granuleIdExtraction": { "type": "string" },
+        "ignoreFilesConfigForDiscovery": {
+          "type": "boolean",
+          "description": "When true, ignore this collection's files config list for determining which files to ingest for a granule, and ingest them all.  Otherwise, ingest only files that match a regex in one of this collection's files config list.  When this property is specified on a task, it overrides the value set on the collection.",
+          "default": false
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "regex": { "type": "string" },
+              "sampleFileName": { "type": "string" },
+              "bucket": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
