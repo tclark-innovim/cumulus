@@ -1,27 +1,35 @@
-'use strict';
-
-const get = require('lodash/get');
-const isNumber = require('lodash/isNumber');
-const memoize = require('lodash/memoize');
-const pMap = require('p-map');
-
-const cumulusMessageAdapter = require('@cumulus/cumulus-message-adapter-js');
-const { enqueueGranuleIngestMessage } = require('@cumulus/ingest/queue');
-const {
+import { Context } from 'aws-lambda';
+import get from 'lodash/get';
+import isNumber from 'lodash/isNumber';
+import memoize from 'lodash/memoize';
+import pMap from 'p-map';
+import cumulusMessageAdapter from '@cumulus/cumulus-message-adapter-js';
+import { enqueueGranuleIngestMessage } from '@cumulus/ingest/queue';
+import {
   getWorkflowFileKey,
   templateKey,
-} = require('@cumulus/common/workflows');
-const { constructCollectionId, deconstructCollectionId } = require('@cumulus/message/Collections');
-const { buildExecutionArn } = require('@cumulus/message/Executions');
-const { getJsonS3Object } = require('@cumulus/aws-client/S3');
+} from '@cumulus/common/workflows';
+import { constructCollectionId, deconstructCollectionId } from '@cumulus/message/Collections';
+import { buildExecutionArn } from '@cumulus/message/Executions';
+import { CumulusMessage, CumulusRemoteMessage } from '@cumulus/types/message';
+import { getJsonS3Object } from '@cumulus/aws-client/S3';
 
-const {
-  collections: collectionsApi,
-  providers: providersApi,
-  granules: granulesApi,
-} = require('@cumulus/api-client');
+import {
+  collections as collectionsApi,
+  providers as providersApi,
+  granules as granulesApi,
+} from '@cumulus/api-client';
+import { QueueGranulesInput, QueueGranulesConfig, QueueGranulesOutput } from './types';
+import GroupAndChunkIterable from './iterable';
 
-async function fetchGranuleProvider(event, providerId) {
+interface HandlerEvent {
+  input: QueueGranulesInput,
+  config: QueueGranulesConfig,
+}
+
+type ApiGranule = QueueGranulesInput['granules'][number];
+
+async function fetchGranuleProvider(event: HandlerEvent, providerId: string | undefined) {
   if (!providerId || providerId === event.config.provider.id) {
     return event.config.provider;
   }
@@ -37,131 +45,66 @@ async function fetchGranuleProvider(event, providerId) {
 /**
  * Return the collectionId from a Granule if possible, otherwise throw an Error
  *
- * @param {Object} granule - the granule to get the collectionId from
- * @returns {String} the collectionId of the granule if has it in its properties'
+ * @param granule - the granule to get the collectionId from
+ * @returns the collectionId of the granule if has it in its properties'
  */
-function getCollectionIdFromGranule(granule) {
+function getCollectionIdFromGranule(granule: ApiGranule): string {
   if (granule.collectionId) {
     return granule.collectionId;
   }
   if (granule.dataType && granule.version) {
     return constructCollectionId(granule.dataType, granule.version);
   }
-  throw new Error(`Invalid collection information provided for granule with granuleId: ${granule.granuleId}', please check task input to make sure collection information is provided`);
+  throw new Error('Invalid collection information provided, please check task '
+                  + 'input to make sure collection information is provided');
 }
 
 /**
- * Group granules by collection and split into batches then split again on provider
- * The purpose of this iterable is to avoid creating all the group and chunk arrays all
- * at once to save heap space for large event inputs. This is done by using a sequence of
- * generators that yield the chunks of granules one at a time.
+ * Return an Iterable of granules, grouped by collectionId and provider, containing
+ * chunks of granules to queue together.
  *
- * The *[Symbol.iterator] method loops over the collection looking for groups that have not
- * already been yielded. Once the first granule of an unseen group is located, a new iterator is
- * created that will search from that point in the collection of granules looking for other
- * granules that belong to the same group.
- *
- * Finally a generator version of the _.chunk() function breaks the grouped granules into chunks.
+ * @param granules - Granules to group and chunk
+ * @param preferredBatchSize - The max chunk size to use when chunking the groups (default 1)
+ * @returns Iterable
  */
-class GroupedGranulesIterable {
-  constructor(granules, chunkSize) {
-    this._granules = granules;
-    this._chunkSize = isNumber(chunkSize) ? chunkSize : 1;
-  }
-
-  _groupKeyFromGranule(collectionId, provider) {
-    return provider ? `${provider}${collectionId}` : collectionId;
-  }
-
-  /**
-   * Lodash's chunk is not a generator so instead this is a version of chunk that builds
-   * and yields one chunk at a time, limiting the creation of many arrays all at once.
-   */
-  *_chunk(iterator) {
-    let chunk = [];
-    let curr = iterator.next();
-    while (!curr.done) {
-      if (chunk.length >= this._chunkSize) {
-        yield chunk;
-        chunk = [];
-      }
-      chunk.push(curr.value);
-      curr = iterator.next();
-    }
-    if (chunk.length > 0) {
-      yield chunk;
-    }
-  }
-
-  /**
-   * This generator acts like a filter. It will yield all granules that match the
-   * `groupKey` param, starting at the `start` point passed in. The `start` index
-   * is an optimization to avoid reiterating through granules that can't possibly
-   * be in the same group because _groupedGranules is called the first time a
-   * group is seen from the [Symbol.iterator] generator.
-   */
-  *_groupedGranules(groupKey, start) {
-    for (let i = start; i < this._granules.length; i += 1) {
-      const granule = this._granules[i];
+function createIterable(
+  granules: ApiGranule[],
+  preferredBatchSize: any
+): GroupAndChunkIterable<ApiGranule, { collectionId: string, provider: string | undefined }> {
+  return new GroupAndChunkIterable(
+    granules,
+    (granule) => {
       const collectionId = getCollectionIdFromGranule(granule);
-      const granuleGroup = this._groupKeyFromGranule(collectionId, granule.provider);
-      if (granuleGroup === groupKey) {
-        yield granule;
-      }
-    }
-  }
-
-  /**
-   * [Symbol.iterator] implements the `Iterable` protocol. This generator iterates through
-   * all the granules finding unique groups. When a new group is found, it yields all the
-   * matching granules through `_groupedGranules` and chunked using `_chunk`.
-   */
-  *[Symbol.iterator]() {
-    const previouslySeen = new Set();
-    for (let i = 0; i < this._granules.length; i += 1) {
-      const granule = this._granules[i];
-      const collectionId = getCollectionIdFromGranule(granule);
-      const groupKey = this._groupKeyFromGranule(collectionId, granule.provider);
-      if (!previouslySeen.has(groupKey)) {
-        previouslySeen.add(groupKey);
-        yield {
-          collectionId,
-          provider: granule.provider,
-          chunks: this._chunk(this._groupedGranules(groupKey, i)),
-        };
-      }
-    }
-  }
+      return { collectionId, provider: granule.provider };
+    },
+    isNumber(preferredBatchSize) && preferredBatchSize > 0 ? preferredBatchSize : 1
+  );
 }
 
 /**
-* Updates each granule in the 'batch' to the passed in createdAt value if one does not already exist
-* @param {Array<Object>} granuleBatch - Array of Cumulus Granule objects
-* @param {number} createdAt           - 'Date.now()' to apply to the granules if there is no
-*                                     existing createdAt value
-* @returns {Array<Object>} updated array of Cumulus Granule objects
-*/
-function updateGranuleBatchCreatedAt(granuleBatch, createdAt) {
+ * Updates each granule in the 'batch' to the passed in createdAt
+ * value if one does not already exist
+ * @param granuleBatch - Array of Cumulus Granule objects
+ * @param createdAt    - 'Date.now()' to apply to the granules if there is
+ *                        no existing createdAt value
+ * @returns updated array of Cumulus Granule objects
+ */
+function updateGranuleBatchCreatedAt(granuleBatch: ApiGranule[], createdAt: number): ApiGranule[] {
   return granuleBatch.map((granule) => ({
     ...granule,
-    createdAt: granule.createdAt ? granule.createdAt : createdAt,
+    createdAt: granule.createdAt ?? createdAt,
   }));
 }
 
 /**
  * See schemas/input.json and schemas/config.json for detailed event description
  *
- * @param {Object} event - Lambda event object
- * @param {Object} testMocks - Object containing mock functions for testing
- * @returns {Promise} - see schemas/output.json for detailed output schema
+ * @param event - Lambda event object
+ * @returns see schemas/output.json for detailed output schema
  *   that is passed to the next task in the workflow
- **/
-async function queueGranules(event, testMocks = {}) {
-  const granules = event.input.granules || [];
-  const updateGranule = testMocks.updateGranuleMock || granulesApi.updateGranule;
-  const enqueueGranuleIngestMessageFn
-    = testMocks.enqueueGranuleIngestMessageMock || enqueueGranuleIngestMessage;
-
+ */
+async function queueGranules(event: HandlerEvent): Promise<QueueGranulesOutput> {
+  const granules = (event.input.granules || []);
   const memoizedFetchProvider = memoize(fetchGranuleProvider, (_, providerId) => providerId);
   const memoizedFetchCollection = memoize(
     collectionsApi.getCollection,
@@ -170,10 +113,10 @@ async function queueGranules(event, testMocks = {}) {
       collectionVersion
     )
   );
-  const arn = buildExecutionArn(
-    get(event, 'cumulus_config.state_machine'),
-    get(event, 'cumulus_config.execution_name')
-  );
+  const parentExecutionArn = buildExecutionArn(
+    get(event, 'cumulus_config.state_machine')!,
+    get(event, 'cumulus_config.execution_name')!
+  )!;
   const pMapConcurrency = get(event, 'config.concurrency', 3);
 
   const messageTemplate = await getJsonS3Object(
@@ -184,12 +127,9 @@ async function queueGranules(event, testMocks = {}) {
     event.config.internalBucket,
     getWorkflowFileKey(event.config.stackName, event.config.granuleIngestWorkflow)
   );
-  const iterable = new GroupedGranulesIterable(
-    granules,
-    event.config.preferredQueueBatchSize
-  );
+
   const executionArns = await pMap(
-    iterable,
+    createIterable(granules, event.config.preferredQueueBatchSize),
     async ({ provider, collectionId, chunks }) => {
       const { name: collectionName, version: collectionVersion } = deconstructCollectionId(
         collectionId
@@ -206,19 +146,17 @@ async function queueGranules(event, testMocks = {}) {
       return await pMap(
         chunks,
         async (granuleBatchIn) => {
-          const createdAt = Date.now();
-          const granuleBatch = updateGranuleBatchCreatedAt(granuleBatchIn, createdAt);
+          const granuleBatch = updateGranuleBatchCreatedAt(granuleBatchIn, Date.now());
           await pMap(
             granuleBatch,
             (queuedGranule) => {
-              const granuleId = queuedGranule.granuleId;
-              const updatedAt = queuedGranule.updatedAt;
+              const { granuleId, updatedAt, createdAt } = queuedGranule;
 
               if (updatedAt && (!Number.isInteger(updatedAt) || updatedAt < 0)) {
-                throw new Error(`Invalid updatedAt value: ${queuedGranule.updatedAt} for granule with granuleId: ${queuedGranule.granuleId}`);
+                throw new Error(`Invalid updatedAt value: ${queuedGranule.updatedAt} `
+                                + `for granule with granuleId: ${queuedGranule.granuleId}`);
               }
-
-              return updateGranule({
+              return granulesApi.updateGranule({
                 prefix: event.config.stackName,
                 collectionId,
                 granuleId,
@@ -226,13 +164,20 @@ async function queueGranules(event, testMocks = {}) {
                   collectionId,
                   granuleId,
                   status: 'queued',
-                  createdAt: queuedGranule.createdAt,
+                  // We use the non-null assertion operator below because we know that
+                  // the call above to updateGranuleBatchCreatedAt has set createdAt to
+                  // the current time (in milliseconds).
+                  updatedAt: updatedAt ?? createdAt!,
+                  createdAt: createdAt!,
                 },
               });
             },
-            { concurrency: pMapConcurrency }
+            {
+              concurrency: pMapConcurrency,
+            }
           );
-          return await enqueueGranuleIngestMessageFn({
+
+          return await enqueueGranuleIngestMessage({
             messageTemplate,
             workflow: {
               name: event.config.granuleIngestWorkflow,
@@ -243,12 +188,14 @@ async function queueGranules(event, testMocks = {}) {
             provider: normalizedProvider,
             collection,
             pdr: event.input.pdr,
-            parentExecutionArn: arn,
+            parentExecutionArn,
             executionNamePrefix: event.config.executionNamePrefix,
             additionalCustomMeta: event.config.childWorkflowMeta,
           });
         },
-        { concurrency: pMapConcurrency }
+        {
+          concurrency: pMapConcurrency,
+        }
       );
     },
     // purposefully serial, the chunks run in parallel.
@@ -264,12 +211,14 @@ async function queueGranules(event, testMocks = {}) {
 /**
  * Lambda handler
  *
- * @param {Object} event      - a Cumulus Message
- * @param {Object} context    - an AWS Lambda context
- * @returns {Promise<Object>} - Returns output from task.
- *                              See schemas/output.json for detailed output schema
+ * @param event   - a Cumulus Message
+ * @param context - an AWS Lambda context
+ * @returns       - Returns output from task
  */
-async function handler(event, context) {
+async function handler(
+  event: CumulusMessage | CumulusRemoteMessage,
+  context: Context
+): Promise<CumulusMessage | CumulusRemoteMessage> {
   return await cumulusMessageAdapter.runCumulusTask(
     queueGranules,
     event,
@@ -277,9 +226,9 @@ async function handler(event, context) {
   );
 }
 
-module.exports = {
+export {
+  createIterable,
   handler,
   queueGranules,
   updateGranuleBatchCreatedAt,
-  GroupedGranulesIterable,
 };
