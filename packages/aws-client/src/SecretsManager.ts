@@ -5,5 +5,5 @@
 import { secretsManager } from './services';
 
 export const getSecretString = (SecretId: string) =>
-  secretsManager().getSecretValue({ SecretId }).promise()
+  secretsManager().getSecretValue({ SecretId })
     .then((response) => response.SecretString);

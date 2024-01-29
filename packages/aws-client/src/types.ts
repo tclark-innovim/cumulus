@@ -9,10 +9,11 @@ import { Kinesis } from '@aws-sdk/client-kinesis';
 import { KMS } from '@aws-sdk/client-kms';
 import { Lambda } from '@aws-sdk/client-lambda';
 import { S3 } from '@aws-sdk/client-s3';
+import { SecretsManager } from '@aws-sdk/client-secrets-manager';
 import { SFN } from '@aws-sdk/client-sfn';
 import { SNS } from '@aws-sdk/client-sns';
 import { SQS } from '@aws-sdk/client-sqs';
 
 export type AWSClientTypes = APIGatewayClient | CloudFormation | CloudWatchEvents | DynamoDB
-| DynamoDBClient | DynamoDBStreamsClient | KMS | Kinesis | Lambda | S3 | SFN | SNS | SQS
+| DynamoDBClient | DynamoDBStreamsClient | KMS | Kinesis | Lambda | S3 | SecretsManager | SFN | SNS | SQS
 | AWS.Service | AWS.DynamoDB.DocumentClient;

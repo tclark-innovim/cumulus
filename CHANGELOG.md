@@ -41,6 +41,8 @@ terraform values and it will also update the database cluster to use the new con
 
 ### Changed
 
+- **CUMULUS-2896**
+  - Update Secrets Manager code to AWS SDK v3
 - **CUMULUS-2898**
   - Update Step Functions code to AWS SDK v3
 - **CUMULUS-2895**

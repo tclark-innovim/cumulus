@@ -6,9 +6,10 @@ const { CloudWatchEvents } = require('@aws-sdk/client-cloudwatch-events');
 const { CloudFormation } = require('@aws-sdk/client-cloudformation');
 const { DynamoDB } = require('@aws-sdk/client-dynamodb');
 const { Kinesis } = require('@aws-sdk/client-kinesis');
+const { KMS } = require('@aws-sdk/client-kms');
 const { Lambda } = require('@aws-sdk/client-lambda');
 const { S3 } = require('@aws-sdk/client-s3');
-const { KMS } = require('@aws-sdk/client-kms');
+const { SecretsManager } = require('@aws-sdk/client-secrets-manager');
 const { SFN } = require('@aws-sdk/client-sfn');
 const { SNS } = require('@aws-sdk/client-sns');
 const { SQS } = require('@aws-sdk/client-sqs');
@@ -292,17 +293,25 @@ test('s3() service defaults to localstack in test mode', async (t) => {
   );
 });
 
-test('secretsManager() service defaults to localstack in test mode', (t) => {
+test('secretsManager() service defaults to localstack in test mode', async (t) => {
   const secretsManager = services.secretsManager();
   const {
     credentials,
     endpoint,
-  } = localStackAwsClientOptions(AWS.SecretsManager);
+  } = localStackAwsClientOptions(SecretsManager);
   t.deepEqual(
-    secretsManager.config.credentials,
+    await secretsManager.config.credentials(),
     credentials
   );
-  t.is(secretsManager.config.endpoint, endpoint);
+  const serviceConfigEndpoint = await secretsManager.config.endpoint();
+  const localEndpoint = new URL(endpoint);
+  t.like(
+    serviceConfigEndpoint,
+    {
+      hostname: localEndpoint.hostname,
+      port: Number.parseInt(localEndpoint.port, 10),
+    }
+  );
 });
 
 test('sfn() service defaults to localstack in test mode', async (t) => {
